@@ -1,0 +1,122 @@
+#!/bin/bash
+set -euo pipefail
+
+[ -v BASE_DIR ] || BASE_DIR="/app"
+[ -v FILE_DIR ] || FILE_DIR="${BASE_DIR}/file"
+[ -v CONF_DIR ] || CONF_DIR="${BASE_DIR}/conf"
+[ -v INIT_DIR ] || INIT_DIR="${BASE_DIR}/init"
+
+say() {
+	echo -e "$(date -u -Isec): ${@}"
+}
+
+fail() {
+	say "${@}" 1>&2
+	exit ${EXIT_CODE:-1}
+}
+
+list_files() {
+	local DIR="."
+	[ ${#} -gt 0 ] && DIR="${1}"
+	DIR="$(readlink -f "${DIR}")"
+	if [ -d "${DIR}" ] ; then
+		find "${DIR}" -mindepth 1 -maxdepth 1 | sort | sed -e "s:^${DIR}/::g"
+	else
+		echo "${DIR}"
+	fi
+}
+
+install_file() {
+	local SRC="${1}"
+	local TGT="${2}"
+
+	if [ ! -f "${SRC}" ] ; then
+		say "There is no source file [${SRC}]"
+		return 1
+	fi
+
+	if [ ! -d "${TGT}" ] ; then
+		say "There is no destination directory [${TGT}], will skip deploying the file [${SRC}]"
+		return 0
+	fi
+
+	local SUM=""
+	[ -f "${SRC}.sum" ] && SUM="$(cat "${SRC}.sum")"
+
+	if [[ ! "${SUM,,}" =~ ^[0-9a-f]{64}$ ]] ; then
+		say "Failed to find the cached checksum for [${SRC}], or its contents are invalid. Computing it directly..."
+		read SUM REST < <(sha256sum "${SUM}")
+		if [[ ! "${SUM,,}" =~ ^[0-9a-f]{64}$ ]] ; then
+			say "Failed to compute the sha256 checksum for [${SRC}]"
+			return 1
+		fi
+	fi
+
+	local MARK="${TGT}/.version"
+	if [ -e "${MARK}" ] ; then
+		local DATE=""
+		local EXISTING=""
+		local EXISTING_LOADED="false"
+		local OLD_SUM="<none>"
+
+		if [ -e "${MARK}" ] ; then
+			# We explicitly don't call sort b/c we want to get the last record on the list,
+			# regardless of its contents
+			read DATE OLD_SUM EXISTING < <(grep -v '^[[:space:]]*#' "${MARK}" | grep -v '^[[:space:]]*$' | tail -1)
+			EXISTING_LOADED="true"
+		fi
+
+		if "${EXISTING_LOADED}" && [ "${SUM}" == "${OLD_SUM}" ] ; then
+			say "The file [${SRC}] appears to already be deployed into [${TGT}] since ${DATE} (version = ${EXISTING}, verified by checksum)."
+			return 0
+		fi
+
+		say "File content change detected for [${SRC}] through file checksum:\n\tEXISTING: [${EXISTING} = ${OLD_SUM}]\n\tINCOMING: [${VER} = ${SUM}]"
+	else
+		say "The configuration doesn't appear to be deployed, or version tracking hasn't yet begun (the marker path [${MARK}] is missing)"
+	fi
+
+	# It's OK to do this, as TGT is meant to be a volume in this container
+	# TODO: Do we want to support multiple file types? tar? tar.gz? tgz? tar.bz2? tbz2? tar.xz? txz? etc?
+	unzip -o -d "${TGT}" "${SRC}"
+
+	# Add the marker record for this version
+	echo -e "$(date -u -Ins) ${SUM} ${VER}" >> "${MARK}"
+}
+
+[ -v VER ] || VER="(unknown)"
+[ -n "${VER}" ] || VER="(unknown)"
+
+while read FILE ; do
+	F="${FILE##*/}"
+	F="${F%%.*}"
+
+	D="${BASE_DIR}/${F}"
+	install_file "${FILE}" "${D}" || fail "Failed to deploy the file [${FILE}] into [${D}]"
+done < <(find "${FILE_DIR}" -mindepth 1 -maxdepth 1 -type f -name '*.zip')
+
+#
+# This is the only fix we know must be applied FOR SURE each time
+#
+realm-fix
+
+#
+# Apply customizations and reconfigurations
+#
+if [ ! -d "${INIT_DIR}" ] ; then
+	say "No initialization to perform, exiting"
+	exit 0
+fi
+
+cd "${INIT_DIR}"
+while read f ; do
+	[ -f "${f}" ] || continue
+	[ -r "${f}" ] || continue
+	[ -x "${f}" ] || continue
+
+	say "Executing initialization script [${f}]..."
+	( "${f}" ) || fail "\tInitialization script [${f}] failed (rc=${?})"
+done < <(list_files)
+
+say "Configuration Initialization Complete"
+exit 0

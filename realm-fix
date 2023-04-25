@@ -1,0 +1,45 @@
+#!/bin/bash
+set -euo pipefail
+
+[ -v BASE_DIR ] || BASE_DIR="/app"
+[ -v CONF_DIR ] || CONF_DIR="${BASE_DIR}/conf"
+
+say() {
+	echo -e "$(date -u -Isec): ${@}"
+}
+
+fail() {
+	say "${@}" 1>&2
+	exit ${EXIT_CODE:-1}
+}
+
+quit() {
+	say "${@}"
+	exit ${EXIT_CODE:-0}
+}
+
+[ -v REALM_FIX ] || quit "WARNING: No REALM_FIX found, will not modify the Excel files"
+[[ "${REALM_FIX}" =~ ^([^=]+)=([^=]+)$ ]] || fail "The format for REALM_FIX is incorrect - must be 'OLD=NEW': [${REALM_FIX}]"
+
+#
+# If REALM_FIX is set, we edit the excel files accordingly
+#
+
+# REALM_FIX is set as "OLD_VALUE,NEW_VALUE", and three versions are created:
+# literal (i.e. as-stated), lowercased, and uppercased
+
+OLD="@${BASH_REMATCH[1]}"
+NEW="@${BASH_REMATCH[2]}"
+
+[ "${OLD}" == "${NEW}" ] && quit "The realm fix requested would have no effect (${OLD} == ${NEW})"
+
+SUBS=("${OLD}" "${NEW}")
+# If applicable, do the lowercased one
+[ "${OLD,,}" != "${OLD}" ] && SUBS+=("${OLD,,}" "${NEW,,}")
+# If applicable, do the uppercased one
+[ "${OLD^^}" != "${OLD}" ] && SUBS+=("${OLD^^}" "${NEW^^}")
+
+while read f ; do
+	fixExcel "${f}" "${SUBS[@]}" || fail "Failed to apply the realm fix for [${f}]"
+done < <(find "${CONF_DIR}" -type f -name '*.xlsx' | sort)
+exit 0
