@@ -6,6 +6,12 @@ set -euo pipefail
 [ -v CONF_DIR ] || CONF_DIR="${BASE_DIR}/conf"
 [ -v INIT_DIR ] || INIT_DIR="${BASE_DIR}/init"
 [ -v DEPL_DIR ] || DEPL_DIR="${BASE_DIR}/depl"
+[ -v FORCE_HASHES ] || FORCE_HASHES="false"
+
+case "${FORCE_HASHES,,}" in
+	true | t | yes | y | 1 | enabled | enable | en | on ) FORCE_HASHES="true" ;;
+	* ) FORCE_HASHES="false" ;;
+esac
 
 say() {
 	echo -e "$(date -u -Isec): ${@}"
@@ -42,10 +48,12 @@ install_file() {
 	fi
 
 	local SUM=""
-	[ -f "${SRC}.sum" ] && SUM="$(cat "${SRC}.sum")"
+	if ! ${FORCE_HASHES} ; then
+		[ -f "${SRC}.sum" ] && SUM="$(cat "${SRC}.sum")"
+	fi
 
 	if [[ ! "${SUM,,}" =~ ^[0-9a-f]{64}$ ]] ; then
-		say "Failed to find the cached checksum for [${SRC}], or its contents are invalid. Computing it directly..."
+		${FORCE_HASHES} || say "Failed to find the cached checksum for [${SRC}], or its contents are invalid. Computing it directly..."
 		read SUM REST < <(sha256sum "${SUM}")
 		if [[ ! "${SUM,,}" =~ ^[0-9a-f]{64}$ ]] ; then
 			say "Failed to compute the sha256 checksum for [${SRC}]"
