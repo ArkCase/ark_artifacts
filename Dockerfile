@@ -27,9 +27,7 @@ ARG VER
 ARG BASE_DIR="/app"
 ARG FILE_DIR="${BASE_DIR}/file"
 ARG INIT_DIR="${BASE_DIR}/init"
-ARG CONF_DIR="${BASE_DIR}/conf"
 ARG DEPL_DIR="${BASE_DIR}/depl"
-ARG WAR_DIR="${BASE_DIR}/war"
 
 LABEL ORG="ArkCase LLC" \
       MAINTAINER="Armedia Devops Team <devops@armedia.com>" \
@@ -46,7 +44,6 @@ ENV JAVA_HOME="/usr/lib/jvm/java" \
     BASE_DIR="${BASE_DIR}" \ 
     FILE_DIR="${FILE_DIR}" \
     INIT_DIR="${INIT_DIR}" \
-    CONF_DIR="${CONF_DIR}" \
     VER="${VER}"
 
 ENV LANG=en_US.UTF-8 \
