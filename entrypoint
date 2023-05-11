@@ -41,11 +41,7 @@ install_file() {
 		say "There is no source file [${SRC}]"
 		return 1
 	fi
-
-	if [ ! -d "${TGT}" ] ; then
-		say "There is no destination directory [${TGT}], will skip deploying the file [${SRC}]"
-		return 0
-	fi
+	local SRC_NAME="${SRC##*/}"
 
 	local SUM=""
 	if ! ${FORCE_HASHES} ; then
@@ -63,26 +59,31 @@ install_file() {
 
 	local MARK="${TGT}/.version"
 	if [ -e "${MARK}" ] ; then
-		local DATE=""
-		local EXISTING=""
-		local EXISTING_LOADED="false"
+		local OLD_DATE=""
+		local OLD_NAME=""
+		local OLD_VER=""
 		local OLD_SUM="<none>"
+		local EXISTING_LOADED="false"
 
 		if [ -e "${MARK}" ] ; then
 			# We explicitly don't call sort b/c we want to get the last record on the list,
 			# regardless of its contents
-			read DATE OLD_SUM EXISTING < <(grep -v '^[[:space:]]*#' "${MARK}" | grep -v '^[[:space:]]*$' | tail -1)
-			EXISTING_LOADED="true"
+			local REST=""
+			IFS="/" read OLD_DATE OLD_NAME OLD_VER OLD_SUM REST < <(grep -v '^[[:space:]]*#' "${MARK}" | grep -v '^[[:space:]]*$' | egrep "/${SRC_NAME}/" | tail -1)
+			[ -n "${OLD_SUM}" ] && EXISTING_LOADED="true"
 		fi
 
-		if "${EXISTING_LOADED}" && [ "${SUM}" == "${OLD_SUM}" ] ; then
-			say "The file [${SRC}] appears to already be deployed into [${TGT}] since ${DATE} (version = ${EXISTING}, verified by checksum)."
-			return 0
+		if "${EXISTING_LOADED}" ; then
+			if [ "${SUM}" == "${OLD_SUM}" ] ; then
+				say "The file [${SRC_NAME}] appears to already be deployed into [${TGT}] since ${OLD_DATE} (version = ${OLD_VER}, verified by checksum)."
+				return 0
+			fi
+			say "File content change detected for [${SRC_NAME}] through file checksum:\n\tEXISTING: [${OLD_VER} = ${OLD_SUM}]\n\tINCOMING: [${VER} = ${SUM}]"
+		else
+			say "Couldn't find a prior installation record for [${SRC_NAME}], deploying the file:\n\tINCOMING: [${VER} = ${SUM}]"
 		fi
-
-		say "File content change detected for [${SRC}] through file checksum:\n\tEXISTING: [${EXISTING} = ${OLD_SUM}]\n\tINCOMING: [${VER} = ${SUM}]"
 	else
-		say "The configuration doesn't appear to be deployed, or version tracking hasn't yet begun (the marker path [${MARK}] is missing)"
+		say "Version tracking hasn't yet begun for ${TGT} (the marker file [${MARK}] is missing)"
 	fi
 
 	# It's OK to do this, as TGT is meant to be a volume in this container
@@ -90,19 +91,27 @@ install_file() {
 	unzip -o -d "${TGT}" "${SRC}"
 
 	# Add the marker record for this version
-	echo -e "$(date -u -Ins) ${SUM} ${VER}" >> "${MARK}"
+	echo -e "$(date -u -Ins)/${SRC_NAME}/${VER}/${SUM}" >> "${MARK}"
 }
 
 [ -v VER ] || VER="(unknown)"
 [ -n "${VER}" ] || VER="(unknown)"
 
-while read FILE ; do
-	F="${FILE##*/}"
-	F="${F%%.*}"
+while read DIR ; do
+	TGT="${DEPL_DIR}/${DIR##*/}"
 
-	D="${DEPL_DIR}/${F}"
-	install_file "${FILE}" "${D}" || fail "Failed to deploy the file [${FILE}] into [${D}]"
-done < <(find "${FILE_DIR}" -mindepth 1 -maxdepth 1 -type f -name '*.zip')
+	if [ ! -d "${TGT}" ] ; then
+		say "There is no destination directory [${TGT}], will skip deploying files meant for it"
+		continue
+	fi
+	TGT="$(readlink -f "${TGT}")"
+
+	# The directory is there ... find any files meant for it,
+	# and install them in alphanumeric order
+	while read FILE ; do
+		install_file "$(readlink -f "${FILE}")" "${TGT}" || fail "Failed to deploy the file [${FILE}] into [${TGT}]"
+	done < <(find "${DIR}" -mindepth 1 -maxdepth 1 -type f -iname '*.zip' | sort)
+done < <(find "${FILE_DIR}" -mindepth 1 -maxdepth 1 -type d | sort)
 
 #
 # This is the only fix we know must be applied FOR SURE each time
