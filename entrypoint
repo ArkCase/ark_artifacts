@@ -37,16 +37,19 @@ install_file() {
 	local SRC="${1}"
 	local TGT="${2}"
 
-	if [ ! -f "${SRC}" ] ; then
-		say "There is no source file [${SRC}]"
+	if [ ! -s "${SRC}" ] ; then
+		say "There is no source file [${SRC}], or it's empty"
 		return 1
 	fi
 	local SRC_NAME="${SRC##*/}"
 
 	local SUM=""
 	if ! ${FORCE_HASHES} ; then
-		[ -f "${SRC}.sum" ] && SUM="$(cat "${SRC}.sum")"
+		[ -s "${SRC}.sum" ] && SUM="$(cat "${SRC}.sum")"
 	fi
+
+	local NEW_VER="${VER}"
+	[ -s "${SRC}.ver" ] && NEW_VER="$(cat "${SRC}.ver")"
 
 	if [[ ! "${SUM,,}" =~ ^[0-9a-f]{64}$ ]] ; then
 		${FORCE_HASHES} || say "Failed to find the cached checksum for [${SRC}], or its contents are invalid. Computing it directly..."
@@ -78,9 +81,9 @@ install_file() {
 				say "The file [${SRC_NAME}] appears to already be deployed into [${TGT}] since ${OLD_DATE} (version = ${OLD_VER}, verified by checksum)."
 				return 0
 			fi
-			say "File content change detected for [${SRC_NAME}] through file checksum:\n\tEXISTING: [${OLD_VER} = ${OLD_SUM}]\n\tINCOMING: [${VER} = ${SUM}]"
+			say "File content change detected for [${SRC_NAME}] through file checksum:\n\tEXISTING: [${OLD_VER} = ${OLD_SUM}]\n\tINCOMING: [${NEW_VER} = ${SUM}]"
 		else
-			say "Couldn't find a prior installation record for [${SRC_NAME}], deploying the file:\n\tINCOMING: [${VER} = ${SUM}]"
+			say "Couldn't find a prior installation record for [${SRC_NAME}], deploying the file:\n\tINCOMING: [${NEW_VER} = ${SUM}]"
 		fi
 	else
 		say "Version tracking hasn't yet begun for ${TGT} (the marker file [${MARK}] is missing)"
@@ -91,7 +94,7 @@ install_file() {
 	unzip -o -d "${TGT}" "${SRC}"
 
 	# Add the marker record for this version
-	echo -e "$(date -u -Ins)/${SRC_NAME}/${VER}/${SUM}" >> "${MARK}"
+	echo -e "$(date -u -Ins)/${SRC_NAME}/${NEW_VER}/${SUM}" >> "${MARK}"
 }
 
 [ -v VER ] || VER="(unknown)"
@@ -128,7 +131,7 @@ fi
 
 cd "${INIT_DIR}"
 while read f ; do
-	[ -f "${f}" ] || continue
+	[ -s "${f}" ] || continue
 	[ -r "${f}" ] || continue
 	[ -x "${f}" ] || continue
 
