@@ -53,7 +53,7 @@ install_file() {
 
 	if [[ ! "${SUM,,}" =~ ^[0-9a-f]{64}$ ]] ; then
 		${FORCE_HASHES} || say "Failed to find the cached checksum for [${SRC}], or its contents are invalid. Computing it directly..."
-		read SUM REST < <(sha256sum "${SUM}")
+		read SUM REST < <(sha256sum "${SRC}")
 		if [[ ! "${SUM,,}" =~ ^[0-9a-f]{64}$ ]] ; then
 			say "Failed to compute the sha256 checksum for [${SRC}]"
 			return 1
