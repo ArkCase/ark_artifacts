@@ -36,7 +36,7 @@ ARG MVN_SRC
 LABEL ORG="ArkCase LLC" \
       MAINTAINER="Armedia Devops Team <devops@armedia.com>" \
       APP="ArkCase Configuration" \
-      VERSION="${VER}"
+      VERSION="${VER}-${BLD}"
 
 #
 # Environment variables
