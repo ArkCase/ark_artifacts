@@ -33,9 +33,11 @@ list_files() {
 	fi
 }
 
-install_file() {
+deploy_zip() {
 	local SRC="${1}"
 	local TGT="${2}"
+	local BN=""
+	[ ${#} -ge 3 ] && BN="${3}"
 
 	if [ ! -s "${SRC}" ] ; then
 		say "There is no source file [${SRC}], or it's empty"
@@ -89,12 +91,25 @@ install_file() {
 		say "Version tracking hasn't yet begun for ${TGT} (the marker file [${MARK}] is missing)"
 	fi
 
-	# It's OK to do this, as TGT is meant to be a volume in this container
-	# TODO: Do we want to support multiple file types? tar? tar.gz? tgz? tar.bz2? tbz2? tar.xz? txz? etc?
-	unzip -o -d "${TGT}" "${SRC}"
+	local DEST="${TGT}"
+	if [ -n "${BN}" ] ; then
+		DEST+="/${BN}"
+		mkdir -p "${DEST}" || fail "Failed to create the deployment subdirectory for [${SRC}] at [${DEST}]"
+	fi
+
+	# It's OK to do this, as TGT is meant to be a volume in this container, and DEST
+	# has already been created within
+	unzip -o -d "${DEST}" "${SRC}"
 
 	# Add the marker record for this version
 	echo -e "$(date -u -Ins)/${SRC_NAME}/${NEW_VER}/${SUM}" >> "${MARK}"
+}
+
+deploy_war() {
+	[[ "${1}" =~ ^(.+)[.][wW][aA][rR]$ ]] || fail "The given filename [${1}] is not a valid WAR file name"
+	local BASENAME="${BASH_REMATCH[1]}"
+	BASENAME="${BASENAME##*/}"
+	deploy_zip "${1}" "${2}" "${BASENAME}"
 }
 
 [ -v VER ] || VER="(unknown)"
@@ -103,17 +118,35 @@ install_file() {
 while read DIR ; do
 	TGT="${DEPL_DIR}/${DIR##*/}"
 
+	#
+	# Deploy ZIP files ... this is straightforward
+	#
 	if [ ! -d "${TGT}" ] ; then
 		say "There is no destination directory [${TGT}], will skip deploying files meant for it"
 		continue
 	fi
+
+	# Canonicalize the target root directory
 	TGT="$(readlink -f "${TGT}")"
 
 	# The directory is there ... find any files meant for it,
 	# and install them in alphanumeric order
+
+	#
+	# Deploy ZIP files - they go straight into the subdirectory itself, no massaging, no special
+	# considerations... straight up "dump the contents into ${TGT}"
 	while read FILE ; do
-		install_file "$(readlink -f "${FILE}")" "${TGT}" || fail "Failed to deploy the file [${FILE}] into [${TGT}]"
+		deploy_zip "$(readlink -f "${FILE}")" "${TGT}" || fail "Failed to deploy the ZIP file [${FILE}] into [${TGT}]"
 	done < <(find "${DIR}" -mindepth 1 -maxdepth 1 -type f -iname '*.zip' | sort)
+
+	#
+	# Deploy WAR files - they each go into a subdirectory that shares their basename, minus the
+	# WAR extension (case-insensitive) ... i.e. arkcase.war gets its contents dumped straight
+    # into ${TGT}/arkcase
+	#
+	while read FILE ; do
+		deploy_war "$(readlink -f "${FILE}")" "${TGT}" || fail "Failed to deploy the WAR file [${FILE}] into [${TGT}]"
+	done < <(find "${DIR}" -mindepth 1 -maxdepth 1 -type f -iname '*.war' | sort)
 done < <(find "${FILE_DIR}" -mindepth 1 -maxdepth 1 -type d | sort)
 
 #

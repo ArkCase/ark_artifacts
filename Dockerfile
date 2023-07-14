@@ -14,7 +14,10 @@ ARG BASE_REPO="arkcase/base"
 ARG BASE_TAG="8.7.0"
 ARG ARCH="amd64"
 ARG OS="linux"
-ARG VER="1.1.0"
+ARG VER="1.2.0"
+ARG BLD="01"
+ARG MVN_VER="3.9.3"
+ARG MVN_SRC="https://dlcdn.apache.org/maven/maven-3/${MVN_VER}/binaries/apache-maven-${MVN_VER}-bin.tar.gz"
 
 FROM "${PUBLIC_REGISTRY}/${BASE_REPO}:${BASE_TAG}"
 
@@ -28,6 +31,7 @@ ARG BASE_DIR="/app"
 ARG FILE_DIR="${BASE_DIR}/file"
 ARG INIT_DIR="${BASE_DIR}/init"
 ARG DEPL_DIR="${BASE_DIR}/depl"
+ARG MVN_SRC
 
 LABEL ORG="ArkCase LLC" \
       MAINTAINER="Armedia Devops Team <devops@armedia.com>" \
@@ -44,14 +48,15 @@ ENV JAVA_HOME="/usr/lib/jvm/java" \
     BASE_DIR="${BASE_DIR}" \ 
     FILE_DIR="${FILE_DIR}" \
     INIT_DIR="${INIT_DIR}" \
-    VER="${VER}"
+    VER="${VER}" \
+    MVN_HOME="/mvn"
 
 ENV LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
     LC_ALL=en_US.UTF-8
 
 #################
-# Build Arkcase
+# Prepare the base environment
 #################
 ENV PATH="${PATH}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
 
@@ -60,6 +65,8 @@ RUN yum -y update && \
         epel-release && \
     yum -y install \
         java-11-openjdk-devel \
+        git \
+        jq \
         openssl \
         python3-pip \
         unzip \
@@ -70,9 +77,31 @@ RUN yum -y update && \
     pip3 install openpyxl && \
     rm -rf /tmp/*
 
+#
+# Add the entrypoint script
+#
 COPY "entrypoint" "/"
-COPY "fixExcel" "realm-fix" "/usr/local/bin/"
-RUN chmod -Rv a+rX "/entrypoint" "/usr/local/bin"
+
+#
+# Install the script that allows us to do search+replace in
+# binary Excel files
+#
+COPY "fixExcel" "realm-fix" "pull-artifact" "/usr/local/bin/"
+
+#
+# Give everyone execute permissions
+#
+RUN chmod -Rv a+rX "/entrypoint" "/usr/local/bin"/*
+
+#
+# Install Maven
+#
+RUN mkdir -p "${MVN_HOME}" && \
+    curl -kL "${MVN_SRC}" | tar -C "${MVN_HOME}" --strip-components=1 -xzvf - && \
+    chmod -R a+rX "${MVN_HOME}"
+
+# Add Maven to the path
+ENV PATH="${MVN_HOME}/bin:${PATH}"
 
 WORKDIR "${BASE_DIR}"
 

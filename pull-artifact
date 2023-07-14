@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# Enable debugging ...
+[ -v DEBUG ] || DEBUG="false"
+case "${DEBUG,,}" in
+	true ) DEBUG="true" ;;
+	* ) DEBUG="false" ;;
+esac
+${DEBUG} && set -x
+
+set -euo pipefail
+
+URL="${1}"
+TGT="${2}"
+
+DIR="$(dirname "${TGT}")"
+[ -d "${DIR}" ] || mkdir -p "${DIR}"
+
+curl -kL "${URL}" | \
+	tee "${TGT}" | \
+	sha256sum | \
+	sed -e 's;\s.*$;;g' | \
+	tr -d '\n' > "${TGT}.sum"
