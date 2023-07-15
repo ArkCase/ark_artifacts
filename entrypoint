@@ -47,11 +47,11 @@ deploy_zip() {
 
 	local SUM=""
 	if ! ${FORCE_HASHES} ; then
-		[ -s "${SRC}.sum" ] && SUM="$(cat "${SRC}.sum")"
+		[ -s "${SRC}.sum" ] && SUM="$(<"${SRC}.sum")"
 	fi
 
 	local NEW_VER="${VER}"
-	[ -s "${SRC}.ver" ] && NEW_VER="$(cat "${SRC}.ver")"
+	[ -s "${SRC}.ver" ] && NEW_VER="$(<"${SRC}.ver")"
 
 	if [[ ! "${SUM,,}" =~ ^[0-9a-f]{64}$ ]] ; then
 		${FORCE_HASHES} || say "Failed to find the cached checksum for [${SRC}], or its contents are invalid. Computing it directly..."

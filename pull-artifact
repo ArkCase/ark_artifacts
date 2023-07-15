@@ -24,7 +24,7 @@ fail() {
 }
 
 usage() {
-	echo -e "usage: ${BASH_SOURCE} source targetFile"
+	echo -e "usage: ${BASH_SOURCE} source targetFile [version]"
 	echo -e ""
 	echo -e "	The source may be a local path or a curl-compatible URL"
 	echo -e "	The target *must* be the local path that the target will be stored as"
@@ -57,6 +57,14 @@ pull() {
 	esac
 }
 
+save_target() {
+	local TGT="${1}"
+	local VER="${2}"
+	tee --output-error=exit "${TGT}" || return ${?}
+	[ -n "${VER}" ] || return 0
+	echo -n "${VER}" > "${TGT}.ver"
+}
+
 render_sum() {
 	local SUM="${1}"
 	sha256sum | \
@@ -64,12 +72,15 @@ render_sum() {
 		tr -d '\n' > "${SUM}"
 }
 
-[ ${#} -eq 2 ] || usage
+[ ${#} -ge 2 ] || usage
+[ ${#} -le 3 ] || usage
 
 SRC="${1}"
 [ -n "${SRC}" ] || fail "The source may not be an empty string"
 TGT="${2}"
 [ -n "${TGT}" ] || fail "The target file may not be an empty string"
+VER="${3}"
+[ -n "${VER}" ] || VER="(unknown)"
 
 SUM="${TGT}.sum"
 
@@ -77,7 +88,7 @@ DIR="$(dirname "${TGT}")"
 [ -d "${DIR}" ] || mkdir -p "${DIR}"
 
 say "Starting deployment of [${SRC}] as [${TGT}]..."
-pull "${SRC}" | tee --output-error=exit "${TGT}" | render_sum "${SUM}"
+pull "${SRC}" | save_target "${TGT}" "${VER}" | render_sum "${SUM}"
 RC=("${PIPESTATUS[@]}")
 
 [ ${RC[0]} -eq 0 ] || fail "\tFailed to retrieve the source file from [${SRC}]"
