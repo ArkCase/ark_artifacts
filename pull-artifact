@@ -10,14 +10,79 @@ ${DEBUG} && set -x
 
 set -euo pipefail
 
-URL="${1}"
+timestamp() {
+	date -Ins
+}
+
+say() {
+	echo -e "$(timestamp): ${@}"
+}
+
+fail() {
+	say "${@}" 1>&2
+	exit ${EXIT_CODE:-1}
+}
+
+usage() {
+	echo -e "usage: ${BASH_SOURCE} source targetFile"
+	echo -e ""
+	echo -e "	The source may be a local path or a curl-compatible URL"
+	echo -e "	The target *must* be the local path that the target will be stored as"
+	echo -e ""
+	exit 1
+}
+
+pull() {
+	local URL="${1}"
+	case "${URL,,}" in
+		# This is a local file, so just use it
+		/* | file:* )
+			# Sanitize the URL into something we understand
+			[[ "${URL,,}" =~ ^file: ]] && URL="${URL:5}"
+			[[ "${URL}" =~ ^/ ]] || URL="/${URL}"
+
+			# Check to see if the path it points to is viable
+			[ -e "${URL}" ] || fail "The source path [${URL}] does not exist"
+			[ -r "${URL}" ] || fail "The source path [${URL}] is not readable"
+
+			# Sanitize the path
+			FILE="$(readlink -f "${URL}")" || fail "Could not locate the file [${URL}]"
+
+			# Output the path's contents
+			cat "${FILE}"
+			;;
+
+		# Any other URL requires the use of CURL...
+		* ) curl -kL "${URL}" ;;
+	esac
+}
+
+render_sum() {
+	local SUM="${1}"
+	sha256sum | \
+		sed -e 's;\s.*$;;g' | \
+		tr -d '\n' > "${SUM}"
+}
+
+[ ${#} -eq 2 ] || usage
+
+SRC="${1}"
+[ -n "${SRC}" ] || fail "The source may not be an empty string"
 TGT="${2}"
+[ -n "${TGT}" ] || fail "The target file may not be an empty string"
+
+SUM="${TGT}.sum"
 
 DIR="$(dirname "${TGT}")"
 [ -d "${DIR}" ] || mkdir -p "${DIR}"
 
-curl -kL "${URL}" | \
-	tee "${TGT}" | \
-	sha256sum | \
-	sed -e 's;\s.*$;;g' | \
-	tr -d '\n' > "${TGT}.sum"
+say "Starting deployment of [${SRC}] as [${TGT}]..."
+pull "${SRC}" | tee --output-error=exit "${TGT}" | render_sum "${SUM}"
+RC=("${PIPESTATUS[@]}")
+
+[ ${RC[0]} -eq 0 ] || fail "\tFailed to retrieve the source file from [${SRC}]"
+[ ${RC[1]} -eq 0 ] || fail "\tFailed to store the retrieved file into [${TGT}]"
+[ ${RC[2]} -eq 0 ] || fail "\tFailed to compute the retrieved file's checksum into [${SUM}]"
+
+say "Deployment complete"
+exit 0
