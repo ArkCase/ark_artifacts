@@ -52,8 +52,8 @@ ENV JAVA_HOME="/usr/lib/jvm/java" \
     VER="${VER}" \
     MVN_HOME="/mvn"
 
-ENV CONF_SRC="${FILE_DIR}/conf" \
-    WARS_SRC="${FILE_DIR}/wars"
+ENV FILES_CONF="${FILE_DIR}/conf" \
+    FILES_WARS="${FILE_DIR}/wars"
 
 ENV LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
