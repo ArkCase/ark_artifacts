@@ -14,7 +14,7 @@ ARG BASE_REPO="arkcase/base"
 ARG BASE_TAG="8.7.0"
 ARG ARCH="amd64"
 ARG OS="linux"
-ARG VER="1.3.2"
+ARG VER="1.4.0"
 ARG BLD="01"
 ARG MVN_VER="3.9.3"
 ARG MVN_SRC="https://dlcdn.apache.org/maven/maven-3/${MVN_VER}/binaries/apache-maven-${MVN_VER}-bin.tar.gz"
@@ -52,8 +52,8 @@ ENV JAVA_HOME="/usr/lib/jvm/java" \
     VER="${VER}" \
     MVN_HOME="/mvn"
 
-ENV CONF_DIR="${FILE_DIR}/conf" \
-    WARS_DIR="${FILE_DIR}/wars"
+ENV CONF_SRC="${FILE_DIR}/conf" \
+    WARS_SRC="${FILE_DIR}/wars"
 
 ENV LANG=en_US.UTF-8 \
     LANGUAGE=en_US:en \
