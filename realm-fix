@@ -6,7 +6,7 @@ set -euo pipefail
 [ -v CONF_DIR ] || CONF_DIR="${DEPL_DIR}/conf"
 
 say() {
-	echo -e "$(date -u -Isec): ${@}"
+	echo -e "$(date -u -Ins): ${@}"
 }
 
 fail() {
@@ -40,7 +40,19 @@ SUBS=("${OLD}" "${NEW}")
 # If applicable, do the uppercased one
 [ "${OLD^^}" != "${OLD}" ] && SUBS+=("${OLD^^}" "${NEW^^}")
 
+say "Finding the excel files from [${CONF_DIR}]..."
+FILES="$(find "${CONF_DIR}" -type f -iname '*.xlsx' | sort | sed -e '/^$/d')"
+TOTAL="$(echo -n "${FILES}" | wc -l)"
+say "\t...found ${TOTAL} files"
+
+[ ${TOTAL} -gt 0 ] || quit "No files found to repair"
+
+COUNT=0
 while read f ; do
-	fixExcel "${f}" "${SUBS[@]}" || fail "Failed to apply the realm fix for [${f}]"
-done < <(find "${CONF_DIR}" -type f -name '*.xlsx' | sort)
+	[ -n "${f}" ] || continue
+	say "Fixing the Excel file [${f}] (file $(( COUNT + 1 ))/${TOTAL})..."
+	fixExcel "${f}" "${SUBS[@]}" || fail "Failed to apply the realm fix for [${f}] (${COUNT}/${TOTAL} files processed successfully)"
+	(( ++COUNT ))
+done < <(echo -n "${FILES}")
+say "Realm fixes completed on ${COUNT} files"
 exit 0
