@@ -132,21 +132,25 @@ while read DIR ; do
 	# The directory is there ... find any files meant for it,
 	# and install them in alphanumeric order
 
-	#
-	# Deploy ZIP files - they go straight into the subdirectory itself, no massaging, no special
-	# considerations... straight up "dump the contents into ${TGT}"
-	while read FILE ; do
-		deploy_zip "$(readlink -f "${FILE}")" "${TGT}" || fail "Failed to deploy the ZIP file [${FILE}] into [${TGT}]"
-	done < <(find "${DIR}" -mindepth 1 -maxdepth 1 -type f -iname '*.zip' | sort)
-
+    # First the WARs, to afford the ZIPs an opportunity to override crap
 	#
 	# Deploy WAR files - they each go into a subdirectory that shares their basename, minus the
 	# WAR extension (case-insensitive) ... i.e. arkcase.war gets its contents dumped straight
     # into ${TGT}/arkcase
 	#
 	while read FILE ; do
+		say "Deploying the WAR file [${FILE}] into [${TGT}]..."
 		deploy_war "$(readlink -f "${FILE}")" "${TGT}" || fail "Failed to deploy the WAR file [${FILE}] into [${TGT}]"
 	done < <(find "${DIR}" -mindepth 1 -maxdepth 1 -type f -iname '*.war' | sort)
+
+    # Second the ZIPs, in case they want to clobber anything the WARs put out
+	#
+	# Deploy ZIP files - they go straight into the subdirectory itself, no massaging, no special
+	# considerations... straight up "dump the contents into ${TGT}"
+	while read FILE ; do
+		say "Deploying the ZIP file [${FILE}] into [${TGT}]..."
+		deploy_zip "$(readlink -f "${FILE}")" "${TGT}" || fail "Failed to deploy the ZIP file [${FILE}] into [${TGT}]"
+	done < <(find "${DIR}" -mindepth 1 -maxdepth 1 -type f -iname '*.zip' | sort)
 done < <(find "${FILE_DIR}" -mindepth 1 -maxdepth 1 -type d | sort)
 
 #
