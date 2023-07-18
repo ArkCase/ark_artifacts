@@ -90,7 +90,8 @@ RUN yum -y update && \
 #
 # Add the script that allows us to add files
 #
-COPY --chmod=755 "pull-artifact" "/usr/local/bin/"
+COPY "pull-artifact" "/usr/local/bin/"
+RUN chmod a+rx "/usr/local/bin/pull-artifact"
 
 #
 # Install Maven
