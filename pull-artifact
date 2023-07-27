@@ -53,7 +53,7 @@ pull() {
 			;;
 
 		# Any other URL requires the use of CURL...
-		* ) curl -kL "${URL}" ;;
+		* ) curl -kL --fail-with-body "${URL}" ;;
 	esac
 }
 
@@ -91,7 +91,7 @@ say "Starting deployment of [${SRC}] as [${TGT}]..."
 pull "${SRC}" | save_target "${TGT}" "${VER}" | render_sum "${SUM}"
 RC=("${PIPESTATUS[@]}")
 
-[ ${RC[0]} -eq 0 ] || fail "\tFailed to retrieve the source file from [${SRC}]"
+[ ${RC[0]} -eq 0 ] || fail "\tFailed to retrieve the source file from [${SRC}]:\n$(cat "${TGT}")"
 [ ${RC[1]} -eq 0 ] || fail "\tFailed to store the retrieved file into [${TGT}]"
 [ ${RC[2]} -eq 0 ] || fail "\tFailed to compute the retrieved file's checksum into [${SUM}]"
 
