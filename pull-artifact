@@ -42,7 +42,6 @@ decrypt() {
 	[ -v CURL_ENCRYPTION_KEY ] || fail "No CURL_ENCRYPTION_KEY value is set, cannot continue"
 	[ -n "${CURL_ENCRYPTION_KEY}" ] || fail "The CURL_ENCRYPTION_KEY value is empty, cannot continue"
 
-	local RC=0
 	echo -n "${VALUE}" | \
 		openssl aes-256-cbc \
 			-a -A -salt -iter 5 -d \
@@ -50,9 +49,7 @@ decrypt() {
 }
 
 decrypt_flex() {
-	local VALUE="${1}"
-	decrypt "${VALUE}" && return 0
-	echo -n "${VALUE}"
+	decrypt "${1}" || echo -n "${1}"
 }
 
 curl_pull() {
