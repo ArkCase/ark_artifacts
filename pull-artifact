@@ -10,6 +10,10 @@ ${DEBUG} && set -x
 
 set -euo pipefail
 
+# If we're not explicitly given the name of the file to use as our
+# auth table, we use the file in the current directory
+[ -v CURL_AUTH_FILE ] || export CURL_AUTH_FILE="curl.auth"
+
 timestamp() {
 	date -Ins
 }
@@ -32,6 +36,107 @@ usage() {
 	exit 1
 }
 
+decrypt() {
+	local VALUE="${1}"
+
+	[ -v CURL_ENCRYPTION_KEY ] || fail "No CURL_ENCRYPTION_KEY value is set, cannot continue"
+	[ -n "${CURL_ENCRYPTION_KEY}" ] || fail "The CURL_ENCRYPTION_KEY value is empty, cannot continue"
+
+	local RC=0
+	echo -n "${VALUE}" | \
+		openssl aes-256-cbc \
+			-a -A -salt -iter 5 -d \
+			-kfile <(echo -n "${CURL_ENCRYPTION_KEY}") 2>/dev/null
+}
+
+decrypt_flex() {
+	local VALUE="${1}"
+	decrypt "${VALUE}" && return 0
+	echo -n "${VALUE}"
+}
+
+curl_pull() {
+	local URL="${1}"
+
+	# First things first: can we get at it straight up?
+	local RC=0
+	local HTTP_CODE="$(curl -kL --disallow-username-in-url --head "${URL}" -w "%{http_code}" -o /dev/null)" || RC=${?}
+	[ ${RC} -eq 0 ] || fail "Failed to query the accessibility for URL [${URL}]"
+
+	# If the HTTP code is above 401, we can't do anything about it...
+	[ ${HTTP_CODE} -le 401 ] || fail "Unable to access URL [${URL}]: HTTP CODE = [${HTTP_CODE}]"
+
+	# If the HTTP code is a 401, best we can do is figure out which auth creds
+	# to use when fetching the URL
+	local AUTH=""
+	if [ ${HTTP_CODE} -eq 401 ] ; then
+		#
+		# If the file pointed to by the CURL_AUTH_FILE envvar exists and is readable,
+		# then that file will be used as a username/password table. The first column
+		# is a regex against which the URL will be tested, the second column is the
+		# username, and the third column is the password. Columns may be separated by
+		# spaces or tabs, since these characters aren't allowed in URLs (must be
+		# escaped as either + or %20), and are also not part of the base64 alphabet.
+		#
+		# Usernames and passwords must be encrypted using the value stored in the
+		# CURL_ENCRYPTION_KEY envvar. It is an error to attempt decryption if this
+		# variable is not set.
+		#
+		# The values should be encrypted using a command like so:
+		#
+		#	$ echo -n "plaintext value" | openssl aes-256-cbc -a -A -salt -iter 5
+		#
+		# This is an example of what the file may look like (including an example
+		# header comment):
+		#
+		# # Host Regex			Username		Password
+		# ^https://myhost.com	U2FsdGVkX1873	rFiEw94/i6WGMnIo
+		#
+		# The first regex to match will win, and the given credentials will be
+		# decrypted and used.
+		#
+		# Lines whose first non-blank character is a hash (#) will be ignored
+		#
+		# Line continuation is not supported
+		#
+		# Empty usernames and passwords aren't supported b/c the encryption
+		# algorithm will never produce empty strings.
+		#
+		local MATCHED="false"
+		if [ -f "${CURL_AUTH_FILE}" ] ; then
+			while read REGEX USERNAME PASSWORD ; do
+				[ -n "${REGEX}" ] || continue
+				[ -n "${USERNAME}" ] || continue
+				[ -n "${PASSWORD}" ] || continue
+
+				if [[ "${URL}" =~ ${REGEX} ]] ; then
+					USERNAME="$(decrypt_flex "${USERNAME}")"
+					PASSWORD="$(decrypt "${PASSWORD}")" || fail "Failed to decrypt the password (REGEX = /${REGEX}/)"
+
+					# We will only use them if both are non-empty strings
+					if [ -n "${USERNAME}" ] && [ -n "${PASSWORD}" ] ; then
+						AUTH="${USERNAME}:${PASSWORD}"
+						break
+					fi
+				fi
+			done < <(sed -e '/^\s*#/d' -e '/^\s*$/d' "${CURL_AUTH_FILE}")
+		fi
+
+		# If there are no matches, then the table is either empty, or
+		# non-existent. In this case, the environment variables
+		# CURL_USER and CURL_PASSWORD will be used as the credentials,
+		# if they're set and non-empty. Decryption will be attempted,
+		# and if it fails then the verbatim values will be used.
+		if [ -z "${AUTH}" ] && [ -v CURL_USERNAME ] && [ -n "${CURL_USERNAME}" ] ; then
+			USERNAME="$(decrypt_flex "${CURL_USERNAME}")"
+			PASSWORD="$(decrypt_flex "${CURL_PASSWORD:-""}")"
+			AUTH="${USERNAME}:${PASSWORD}"
+		fi
+	fi
+	[ -z "${AUTH}" ] || AUTH="--user \"${AUTH}\""
+	curl -kL --disallow-username-in-url --fail --config <(echo "${AUTH}") "${URL}"
+}
+
 pull() {
 	local URL="${1}"
 	case "${URL,,}" in
@@ -52,8 +157,8 @@ pull() {
 			cat "${FILE}"
 			;;
 
-		# Any other URL requires the use of CURL...
-		* ) curl -kL --fail "${URL}" ;;
+		# It's a URL, so pull it with CURL
+		* ) curl_pull "${URL}" ;;
 	esac
 }
 
