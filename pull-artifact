@@ -36,20 +36,26 @@ usage() {
 	exit 1
 }
 
-decrypt() {
+decrypt_required() {
 	local VALUE="${1}"
 
 	[ -v CURL_ENCRYPTION_KEY ] || fail "No CURL_ENCRYPTION_KEY value is set, cannot continue"
 	[ -n "${CURL_ENCRYPTION_KEY}" ] || fail "The CURL_ENCRYPTION_KEY value is empty, cannot continue"
 
-	echo -n "${VALUE}" | \
-		openssl aes-256-cbc \
-			-a -A -salt -iter 5 -d \
-			-kfile <(echo -n "${CURL_ENCRYPTION_KEY}") 2>/dev/null
+	decrypt "${VALUE}"
 }
 
-decrypt_flex() {
-	decrypt "${1}" || echo -n "${1}"
+decrypt() {
+	local VALUE="${1}"
+	if [ -v CURL_ENCRYPTION_KEY ] && [ -n "${CURL_ENCRYPTION_KEY}" ] ; then
+		echo -n "${VALUE}" | \
+			openssl aes-256-cbc \
+				-a -A -salt -iter 5 -d \
+				-kfile <(echo -n "${CURL_ENCRYPTION_KEY}") 2>/dev/null
+		return "${PIPESTATUS[1]}"
+	fi
+	echo -n "${VALUE}"
+	return 0
 }
 
 curl_pull() {
@@ -107,8 +113,8 @@ curl_pull() {
 				[ -n "${PASSWORD}" ] || continue
 
 				if [[ "${URL}" =~ ${REGEX} ]] ; then
-					USERNAME="$(decrypt_flex "${USERNAME}")"
-					PASSWORD="$(decrypt "${PASSWORD}")" || fail "Failed to decrypt the password (REGEX = /${REGEX}/)"
+					USERNAME="$(decrypt "${USERNAME}")"
+					PASSWORD="$(decrypt_required "${PASSWORD}")" || fail "Failed to decrypt the password (REGEX = /${REGEX}/)"
 
 					# We will only use them if both are non-empty strings
 					if [ -n "${USERNAME}" ] && [ -n "${PASSWORD}" ] ; then
@@ -125,8 +131,8 @@ curl_pull() {
 		# if they're set and non-empty. Decryption will be attempted,
 		# and if it fails then the verbatim values will be used.
 		if [ -z "${AUTH}" ] && [ -v CURL_USERNAME ] && [ -n "${CURL_USERNAME}" ] ; then
-			USERNAME="$(decrypt_flex "${CURL_USERNAME}")"
-			PASSWORD="$(decrypt_flex "${CURL_PASSWORD:-""}")"
+			USERNAME="$(decrypt "${CURL_USERNAME}")"
+			PASSWORD="$(decrypt "${CURL_PASSWORD:-""}")"
 			AUTH="${USERNAME}:${PASSWORD}"
 		fi
 	fi

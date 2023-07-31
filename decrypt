@@ -15,9 +15,12 @@ fail() {
 	exit ${EXIT_CODE:-1}
 }
 
-[ -v CURL_ENCRYPTION_KEY ] || fail "No CURL_ENCRYPTION_KEY value is set, cannot continue"
-[ -n "${CURL_ENCRYPTION_KEY}" ] || fail "The CURL_ENCRYPTION_KEY value is empty, cannot continue"
-
-exec openssl aes-256-cbc \
-	-a -A -salt -iter 5 -d \
-	-kfile <(echo -n "${CURL_ENCRYPTION_KEY}") 2>/dev/null
+if [ -v CURL_ENCRYPTION_KEY ] && [ -n "${CURL_ENCRYPTION_KEY}" ] ; then
+	# Decrypt the value
+	exec openssl aes-256-cbc \
+		-a -A -salt -iter 5 -d \
+		-kfile <(echo -n "${CURL_ENCRYPTION_KEY}") 2>/dev/null
+else
+	# Don't decrypt anything ...
+	exec cat
+fi
