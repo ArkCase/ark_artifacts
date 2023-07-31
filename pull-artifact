@@ -36,24 +36,31 @@ usage() {
 	exit 1
 }
 
-decrypt_required() {
-	local VALUE="${1}"
-
-	[ -v CURL_ENCRYPTION_KEY ] || fail "No CURL_ENCRYPTION_KEY value is set, cannot continue"
-	[ -n "${CURL_ENCRYPTION_KEY}" ] || fail "The CURL_ENCRYPTION_KEY value is empty, cannot continue"
-
-	decrypt "${VALUE}"
-}
-
 decrypt() {
 	local VALUE="${1}"
-	if [ -v CURL_ENCRYPTION_KEY ] && [ -n "${CURL_ENCRYPTION_KEY}" ] ; then
-		echo -n "${VALUE}" | \
-			openssl aes-256-cbc \
-				-a -A -salt -iter 5 -d \
-				-kfile <(echo -n "${CURL_ENCRYPTION_KEY}") 2>/dev/null
-		return "${PIPESTATUS[1]}"
+
+	local REQUIRED="false"
+	[ ${#} -ge 2 ] && REQUIRED="${2,,}"
+	case "${REQUIRED}" in
+		true ) REQUIRED="true" ;;
+		* ) REQUIRED="false" ;;
+	esac
+
+	if "${REQUIRED}" ; then
+		[ -v CURL_ENCRYPTION_KEY ] || fail "No CURL_ENCRYPTION_KEY value is set, cannot continue"
+		[ -n "${CURL_ENCRYPTION_KEY}" ] || fail "The CURL_ENCRYPTION_KEY value is empty, cannot continue"
 	fi
+
+	if [ -v CURL_ENCRYPTION_KEY ] && [ -n "${CURL_ENCRYPTION_KEY}" ] ; then
+		local RC=0
+		openssl aes-256-cbc \
+			-a -A -salt -iter 5 -d \
+			-kfile <(echo -n "${CURL_ENCRYPTION_KEY}") 2>/dev/null < <(echo -n "${VALUE}") || RC=${?}
+		[ ${RC} -eq 0 ] && return 0
+		${REQUIRED} && fail "Failed to decrypt the value (rc=${RC})"
+	fi
+
+	# Nothing to decrypt with, or decryption failed but wasn't required
 	echo -n "${VALUE}"
 	return 0
 }
@@ -114,7 +121,7 @@ curl_pull() {
 
 				if [[ "${URL}" =~ ${REGEX} ]] ; then
 					USERNAME="$(decrypt "${USERNAME}")"
-					PASSWORD="$(decrypt_required "${PASSWORD}")" || fail "Failed to decrypt the password (REGEX = /${REGEX}/)"
+					PASSWORD="$(decrypt "${PASSWORD}" "true")" || fail "Failed to decrypt the password (REGEX = /${REGEX}/)"
 
 					# We will only use them if both are non-empty strings
 					if [ -n "${USERNAME}" ] && [ -n "${PASSWORD}" ] ; then
