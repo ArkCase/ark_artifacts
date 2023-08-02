@@ -1,0 +1,16 @@
+#!/bin/bash
+
+DEFAULT_PORT="80"
+[ $(id -u) -eq 0 ] || DEFAULT_PORT="8080"
+
+# Make sure we're using a correct port
+[ -v PORT ] || PORT="${DEFAULT_PORT}"
+[[ "${PORT}" =~ ^[1-9][0-9]*$ ]] || PORT="${DEFAULT_PORT}"
+[ ${PORT} -lt 1 ] && PORT="${DEFAULT_PORT}"
+[ ${PORT} -gt 65535 ] && PORT="${DEFAULT_PORT}"
+
+# If we're not running as root, and we're using a low port,
+# add 10000 to the port so we end up on a high port
+[ $(id -u) -ne 0 ] && [ ${PORT} -lt 1024 ] && (( PORT += 10000 ))
+
+exec python3 -m http.server ${PORT}

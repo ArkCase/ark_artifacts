@@ -91,8 +91,8 @@ RUN yum -y update && \
 #
 # Add the script that allows us to add files
 #
-COPY "copy-artifacts" "pull-artifact" "/usr/local/bin/"
-RUN chmod a+rx "/usr/local/bin/pull-artifact" "/usr/local/bin/copy-artifacts"
+COPY "entrypoint" "copy-artifacts" "pull-artifact" "/usr/local/bin/"
+RUN chmod a+rx "/usr/local/bin/entrypoint" "/usr/local/bin/copy-artifacts" "/usr/local/bin/pull-artifact"
 
 #
 # Install Maven
@@ -104,6 +104,6 @@ RUN mkdir -p "${MVN_HOME}" && \
 # Add Maven to the path
 ENV PATH="${MVN_HOME}/bin:${PATH}"
 
-WORKDIR "${BASE_DIR}"
-
-ENTRYPOINT [ "/bin/bash" ]
+USER root
+WORKDIR "${FILE_DIR}"
+ENTRYPOINT [ "/usr/local/bin/entrypoint" ]
