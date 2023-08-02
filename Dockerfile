@@ -14,7 +14,7 @@ ARG BASE_REPO="arkcase/base"
 ARG BASE_TAG="8.7.0"
 ARG ARCH="amd64"
 ARG OS="linux"
-ARG VER="2.0.3"
+ARG VER="2.0.4"
 ARG BLD="01"
 ARG MVN_VER="3.9.3"
 ARG MVN_SRC="https://dlcdn.apache.org/maven/maven-3/${MVN_VER}/binaries/apache-maven-${MVN_VER}-bin.tar.gz"
@@ -91,8 +91,8 @@ RUN yum -y update && \
 #
 # Add the script that allows us to add files
 #
-COPY "pull-artifact" "/usr/local/bin/"
-RUN chmod a+rx "/usr/local/bin/pull-artifact"
+COPY "copy-artifacts" "pull-artifact" "/usr/local/bin/"
+RUN chmod a+rx "/usr/local/bin/pull-artifact" "/usr/local/bin/copy-artifacts"
 
 #
 # Install Maven
