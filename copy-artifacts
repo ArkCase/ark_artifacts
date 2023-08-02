@@ -36,4 +36,6 @@ tar -T <(echo -n "${FILES}") -cf - | tar -C "${DEPL_DIR}" -xvf -
 for RC in "${PIPESTATUS[@]}" ; do
 	[ ${RC} -eq 0 ] || fail "Failed to perform the file copy (rc=${RC})"
 done
+say "Setting the target files to be all-readable (but not writable)"
+chmod -R a=rX "${DEPL_DIR}" || fail "Failed to set the copied files' permissions"
 quit "Copy completed"
