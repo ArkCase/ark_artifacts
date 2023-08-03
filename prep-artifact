@@ -149,7 +149,7 @@ curl_pull() {
 
 pull() {
 	local URL="${1}"
-	if [[ "${URL,,}" =~ ^[a-z][^-+.a-z0-9]*:// ]] ; then
+	if [[ "${URL,,}" =~ ^[a-z][-+.a-z0-9]*:// ]] ; then
 		# It's a URL, so pull it with CURL
 		curl_pull "${URL}"
 	else
@@ -188,7 +188,7 @@ SRC="${1}"
 [ -n "${SRC}" ] || fail "The source may not be an empty string"
 TGT="${2}"
 [ -n "${TGT}" ] || fail "The target file may not be an empty string"
-VER="${3}"
+VER="${3:-""}"
 [ -n "${VER}" ] || VER="(unknown)"
 
 SUM="${TGT}.sum"
