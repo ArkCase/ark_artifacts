@@ -91,8 +91,8 @@ RUN yum -y update && \
 #
 # Add the script that allows us to add files
 #
-COPY "entrypoint" "copy-artifacts" "pull-artifact" "/usr/local/bin/"
-RUN chmod a+rx "/usr/local/bin/entrypoint" "/usr/local/bin/copy-artifacts" "/usr/local/bin/pull-artifact"
+COPY "entrypoint" "prep-artifact" "/usr/local/bin/"
+RUN chmod a+rx "/usr/local/bin/entrypoint" "/usr/local/bin/prep-artifact"
 
 #
 # Install Maven
