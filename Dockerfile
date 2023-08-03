@@ -86,11 +86,14 @@ RUN yum -y update && \
     && \
     yum -y clean all && \
     pip3 install openpyxl && \
+    pip3 install httpuploader && \
     rm -rf /tmp/*
 
 #
 # Add the script that allows us to add files
 #
+ENV UPLOADER_CFG="/app/httpuploader.ini"
+COPY "httpuploader.ini" "${UPLOADER_CONFIG}"
 COPY "entrypoint" "prep-artifact" "/usr/local/bin/"
 RUN chmod a+rx "/usr/local/bin/entrypoint" "/usr/local/bin/prep-artifact"
 
