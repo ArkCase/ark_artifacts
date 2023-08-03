@@ -16,8 +16,8 @@ ARG ARCH="amd64"
 ARG OS="linux"
 ARG VER="2.0.5"
 ARG BLD="01"
-ARG MVN_VER="3.9.3"
-ARG MVN_SRC="https://dlcdn.apache.org/maven/maven-3/${MVN_VER}/binaries/apache-maven-${MVN_VER}-bin.tar.gz"
+ARG MVN_VER="3.9.4"
+ARG MVN_SRC="https://archive.apache.org/dist/maven/maven-3/${MVN_VER}/binaries/apache-maven-${MVN_VER}-bin.tar.gz"
 
 FROM "${PUBLIC_REGISTRY}/${BASE_REPO}:${BASE_TAG}"
 
