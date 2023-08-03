@@ -149,27 +149,21 @@ curl_pull() {
 
 pull() {
 	local URL="${1}"
-	case "${URL,,}" in
-		# This is a local file, so just use it
-		/* | file:* )
-			# Sanitize the URL into something we understand
-			[[ "${URL,,}" =~ ^file: ]] && URL="${URL:5}"
-			[[ "${URL}" =~ ^/ ]] || URL="/${URL}"
-
-			# Check to see if the path it points to is viable
-			[ -e "${URL}" ] || fail "The source path [${URL}] does not exist"
-			[ -r "${URL}" ] || fail "The source path [${URL}] is not readable"
-
-			# Sanitize the path
-			FILE="$(readlink -f "${URL}")" || fail "Could not locate the file [${URL}]"
-
-			# Output the path's contents
-			cat "${FILE}"
-			;;
-
+	if [[ "${URL,,}" =~ ^[a-z][^-+.a-z0-9]*:// ]] ; then
 		# It's a URL, so pull it with CURL
-		* ) curl_pull "${URL}" ;;
-	esac
+		curl_pull "${URL}"
+	else
+		# Check to see if the path it points to is viable
+		[ -e "${URL}" ] || fail "The source file [${URL}] does not exist"
+		[ -f "${URL}" ] || fail "The source path [${URL}] is not a regular file"
+		[ -r "${URL}" ] || fail "The source file [${URL}] is not readable"
+
+		# Sanitize the path
+		FILE="$(readlink -f "${URL}")" || fail "Could not locate the file [${URL}]"
+
+		# Output the path's contents
+		cat "${FILE}"
+	fi
 }
 
 save_target() {
