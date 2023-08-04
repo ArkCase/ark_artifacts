@@ -88,10 +88,12 @@ RUN yum -y update && \
 #
 # Add the script that allows us to add files
 #
-ENV UPLOADER_CFG="/app/httpuploader.ini"
-COPY "httpuploader.ini" "${UPLOADER_CONFIG}"
+ARG UPLOADER_CFG="/app/httpuploader.ini"
+ENV UPLOADER_CFG="${UPLOADER_CFG}"
+COPY "httpuploader.ini" "${UPLOADER_CFG}"
 COPY "entrypoint" "prep-artifact" "/usr/local/bin/"
-RUN chmod a+rx "/usr/local/bin/entrypoint" "/usr/local/bin/prep-artifact"
+RUN chmod a+rx "/usr/local/bin/entrypoint" "/usr/local/bin/prep-artifact" && \
+    chmod a=r "${UPLOADER_CFG}"
 
 #
 # Install Maven
