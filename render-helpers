@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# Enable debugging ...
+[ -v DEBUG ] || DEBUG="false"
+case "${DEBUG,,}" in
+	true ) DEBUG="true" ;;
+	* ) DEBUG="false" ;;
+esac
+${DEBUG} && set -x
+
+set -euo pipefail
+
+timestamp() {
+	date -Ins
+}
+
+say() {
+	echo -e "$(timestamp): ${@}"
+}
+
+fail() {
+	say "${@}" 1>&2
+	exit ${EXIT_CODE:-1}
+}
+
+usage() {
+	echo -e "usage: ${BASH_SOURCE:-${0}} file [version]" 1>&2
+	exit 1
+}
+
+[ ${#} -ge 1 ] || usage
+[ ${#} -le 2 ] || usage
+
+FILE="${1}"
+[ -n "${FILE}" ] || fail "The file name may not be an empty string"
+[ -e "${FILE}" ] || fail "The file [${FILE}] does not exist"
+[ -f "${FILE}" ] || fail "The path [${FILE}] is not a regular file"
+[ -r "${FILE}" ] || fail "The file [${FILE}] is not readable"
+
+VER=""
+[ ${#} -eq 2 ] && VER="${2}"
+[ -n "${VER}" ] || VER="(unknown)"
+
+# Create the checksum file
+SUM="${FILE}.sum"
+say "Creating the checksum file at [${SUM}]"
+sha256sum < "${FILE}" | sed -e 's;\s.*$;;g' > "${SUM}"
+
+VMARK="${FILE}.ver"
+say "Creating the version marker at [${VMARK}]"
+echo -n "${VER}" > "${VMARK}"
+
+say "Done"
+exit 0
