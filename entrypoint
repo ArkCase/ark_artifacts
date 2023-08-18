@@ -8,7 +8,7 @@ set -euo pipefail
 acme-init
 
 CERT="$(:> ~/server.pem && readlink -f ~/server.pem)"
-cat /.ssl/key.pem /.ssl/cert.pem > "${CERT}"
+cat /.ssl/cert.key /.ssl/cert.pem > "${CERT}"
 chmod u=r,go= "${CERT}"
 
 DEFAULT_PORT="443"
