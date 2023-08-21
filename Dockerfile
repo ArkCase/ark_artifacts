@@ -65,8 +65,7 @@ ENV PATH="${PATH}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
 # We add all of this crap b/c it may come in handy later and it doesn't
 # weigh enough to be of true concern
 #
-RUN yum -y update && \
-    yum -y install \
+RUN yum -y install \
         epel-release && \
     yum -y install \
         java-11-openjdk-devel \
