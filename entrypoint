@@ -8,6 +8,11 @@ set -euo pipefail
 [ -v SSL_DIR ] || SSL_DIR="/.ssl"
 acme-init
 
+#
+# Make sure all helper files are up-to-date
+#
+rebuild-helpers
+
 DEFAULT_PORT="443"
 [ $(id -u) -eq 0 ] || DEFAULT_PORT="8443"
 
@@ -21,4 +26,5 @@ DEFAULT_PORT="443"
 # add 10000 to the port so we end up on a high port
 [ $(id -u) -ne 0 ] && [ ${PORT} -lt 1024 ] && (( PORT += 10000 ))
 
+echo -e "Launching the HTTPS server on port ${PORT}..."
 exec /usr/local/bin/httpuploader.py --config "${UPLOADER_CFG}" -p ${PORT} --cert "${SSL_DIR}/cert.pem" --key "${SSL_DIR}/cert.key"

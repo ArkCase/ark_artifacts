@@ -28,7 +28,7 @@ fail() {
 }
 
 usage() {
-	echo -e "usage: ${BASH_SOURCE} source targetFile [version]"
+	echo -e "usage: ${BASH_SOURCE:-${0}} source targetFile [version]"
 	echo -e ""
 	echo -e "	The source may be a local path or a curl-compatible URL"
 	echo -e "	The target *must* be the local path that the target will be stored as"
@@ -176,9 +176,8 @@ save_target() {
 
 render_sum() {
 	local SUM="${1}"
-	sha256sum | \
-		sed -e 's;\s.*$;;g' | \
-		tr -d '\n' > "${SUM}"
+	read SHA256 REST < <(sha256sum) || true
+	echo -n "${SHA256}" > "${SUM}"
 }
 
 [ ${#} -ge 2 ] || usage

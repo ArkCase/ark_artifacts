@@ -14,8 +14,8 @@ ARG BASE_REPO="arkcase/base"
 ARG BASE_TAG="8.8-02"
 ARG ARCH="amd64"
 ARG OS="linux"
-ARG VER="1.3.0"
-ARG BLD="02"
+ARG VER="1.4.0"
+ARG BLD="01"
 ARG MVN_VER="3.9.4"
 ARG MVN_SRC="https://archive.apache.org/dist/maven/maven-3/${MVN_VER}/binaries/apache-maven-${MVN_VER}-bin.tar.gz"
 
@@ -94,6 +94,7 @@ COPY \
     "httpuploader.py" \
     "prep-artifact" \
     "render-helpers" \
+    "rebuild-helpers" \
     "/usr/local/bin/"
 RUN chmod a+rx \
         "/usr/local/bin/entrypoint" \
