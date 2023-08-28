@@ -24,16 +24,25 @@ find "${FILE_DIR}" -type f -name '*.ver' -delete
 
 say "👉 Rendering any missing helpers for all contents of [${FILE_DIR}]..."
 COUNT=0
+FAILED=()
 while read FILE ; do
 	say "\t👉 Processing [${FILE}]..."
 	if render-helpers "${FILE}" ; then
-		say "✅ done!"
 		(( ++COUNT ))
-		continue
+	else
+		FAILED+=("${FILE}")
 	fi |& sed -e 's;^;\t\t;g'
-
-	fail "❌ rendering failed for [${FILE}]"
 done < <(find "${FILE_DIR}" -type f -not -name '*.sum' -not -name '*.ver' | sort)
+
+if [ ${#FAILED[@]} -gt 0 ] ; then
+	S="s"
+	[ ${#FAILED[@]} -ne 1 ] || S=""
+	say "Rendering failed for the following ${#FAILED[@]} file${S}:"
+	for FILE in "${FAILED[@]}" ; do
+		say "\t${FILE}"
+	done
+	fail "Rebuilding helpers failed"
+fi
 S="s"
 [ ${COUNT} -ne 1 ] || S=""
 say "✅ rendered artifact helpers (version + checksum) for ${COUNT} element${S}"
