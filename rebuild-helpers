@@ -30,7 +30,7 @@ while read FILE ; do
 		say "✅ done!"
 		(( ++COUNT ))
 		continue
-	fi |& sed -e 's;^;\t\t'
+	fi |& sed -e 's;^;\t\t;g'
 
 	fail "❌ rendering failed for [${FILE}]"
 done < <(find "${FILE_DIR}" -type f -not -name '*.sum' -not -name '*.ver' | sort)
