@@ -18,16 +18,17 @@ fail() {
 [ -v BASE_DIR ] || BASE_DIR="/app"
 [ -v FILE_DIR ] || FILE_DIR="${BASE_DIR}file"
 
-say "👉 Cleaning out old version and checksum files..."
+say "👉 Cleaning out old checksum files..."
 find "${FILE_DIR}" -type f -name '*.sum' -delete
-find "${FILE_DIR}" -type f -name '*.ver' -delete
 
 say "👉 Rendering any missing helpers for all contents of [${FILE_DIR}]..."
 COUNT=0
 FAILED=()
 while read FILE ; do
 	say "\t👉 Processing [${FILE}]..."
-	if render-helpers "${FILE}" ; then
+	VER=""
+	[ -s "${FILE}.ver" ] && VER="$(<"${FILE}.ver")"
+	if render-helpers "${FILE}" "${VER}" ; then
 		(( ++COUNT ))
 	else
 		FAILED+=("${FILE}")
