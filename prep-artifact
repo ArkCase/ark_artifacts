@@ -74,7 +74,7 @@ curl_pull() {
 	[ ${RC} -eq 0 ] || fail "Failed to query the accessibility for URL [${URL}]"
 
 	# If the HTTP code is above 401, we can't do anything about it...
-	[ ${HTTP_CODE} -le 401 ] || fail "Unable to access URL [${URL}]: HTTP CODE = [${HTTP_CODE}]"
+	[ ${HTTP_CODE} -le 400 ] || fail "Unable to access URL [${URL}]: HTTP CODE = [${HTTP_CODE}]"
 
 	# If the HTTP code is a 401, best we can do is figure out which auth creds
 	# to use when fetching the URL
