@@ -44,7 +44,7 @@ VER=""
 # Create the checksum file
 SUM="${FILE}.sum"
 say "Creating the checksum file at [${SUM}]"
-sha256sum < "${FILE}" | sed -e 's;\s.*$;;g' > "${SUM}"
+sha256sum < "${FILE}" | sed -e 's;\s.*$;;g' | tr -d '\n' > "${SUM}"
 
 VMARK="${FILE}.ver"
 say "Creating the version marker at [${VMARK}]"
