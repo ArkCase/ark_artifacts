@@ -1,0 +1,74 @@
+#!/bin/bash
+
+set -euo pipefail
+
+timestamp() {
+	/usr/bin/date -Ins -u
+}
+
+say() {
+	echo -e "$(timestamp): ${@}"
+}
+
+fail() {
+	say "❌ ${@}" 1>&2
+	exit ${EXIT_CODE:-1}
+}
+
+cleanup() {
+	if [ -v WORK_DIR ] ; then
+		[ -d "${WORK_DIR}" ] && /usr/bin/rm -rf "${WORK_DIR}" &>/dev/null
+	fi
+}
+
+usage() {
+	{
+		echo -e "usage: ${BASH_SOURCE:-${0}} spec1 [spec2 spec3 ... specN]"
+		echo -e ""
+		echo -e "\tArtifact specs are of the form artifact[@repo]=target"
+		echo -e ""
+		echo -e "\t\tartifact: groupId:artifactId:version[:packaging[:classifier]]"
+		echo -e "\t\trepo:     URL to the Maven repository housing the artifact (optional)"
+		echo -e "\t\ttarget:   The final path where the file will be copied into"
+		echo -e ""
+	} 1>&2
+	exit 1
+}
+
+[ ${#} -ge 1 ] || usage
+
+MVN="$(type -P mvn)" || fail "Maven is not in the path"
+
+WORK_DIR="$(/usr/bin/mktemp -d -p "${PWD}" ".mvn-tmp.XXXXXX")" || fail "Failed to create the temporary work directory"
+trap cleanup EXIT
+
+M2_DIR="${WORK_DIR}/m2"
+INT_DIR="${WORK_DIR}/int"
+
+# Each parameter is of the form artifact[@repo]=target
+for n in "${@}" ; do
+	# TODO: Split the repo from the artifact
+
+	[[ "${n}" =~ ^([^@=]+)(@([^=]*))?=(.+)$ ]] || fail "Artifact spec [${n}] is not valid"
+	ARTIFACT="${BASH_REMATCH[1]}"
+	REPOSITORY="${BASH_REMATCH[3]}"
+	DEST="${BASH_REMATCH[4]}"
+
+	REPO=()
+	REPO_MSG=""
+	if [ -n "${REPOSITORY}" ] ; then
+		REPO=(-DremoteRepositories="${REPOSITORY}")
+		REPO_MSG=" from repository [${REPOSITORY}]"
+	fi
+
+	say "👉 Downloading [${ARTIFACT}]${REPO_MSG}"
+	"${MVN}" -q -U -Dmaven.repo.local="${M2_DIR}" dependency:get -Dtransitive=false -Dartifact="${ARTIFACT}" "${REPO[@]}" || fail "Failed to download [${ARTIFACT}]${REPO_MSG}"
+	say "\t✅ Download complete!"
+
+	say "👉 Copying [${ARTIFACT}] into its final location at [${DEST}]..."
+	"${MVN}" -q -Dmaven.repo.local="${M2_DIR}" dependency:copy -Dartifact="${ARTIFACT}" -DoutputDirectory="${INT_DIR}" -DuseBaseVersion=true -DoutputAbsoluteArtifactFilename=true || fail "Failed to copy [${ARTIFACT}] into the work directory"
+	SRC_FILE="$(find "${INT_DIR}" -type f | sort | head -1)"
+	say "\t👉 Intermediate copy... (${SRC_FILE##*/})"
+	/usr/bin/mv -f "${SRC_FILE}" "${DEST}" || fail "Failed to copy [${ARTIFACT}] into [${DEST}]"
+	say "\t✅ Copy complete!"
+done
