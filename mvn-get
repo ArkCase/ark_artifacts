@@ -49,10 +49,17 @@ INT_DIR="${WORK_DIR}/int"
 for n in "${@}" ; do
 	# TODO: Split the repo from the artifact
 
-	[[ "${n}" =~ ^([^@=]+)(@([^=]*))?=(.+)$ ]] || fail "Artifact spec [${n}] is not valid"
+	[[ "${n}" =~ ^([^@=[:space:]]+)(@([^=[:space:]]*))?=(.+)$ ]] || fail "Artifact spec [${n}] is not valid"
 	ARTIFACT="${BASH_REMATCH[1]}"
 	REPOSITORY="${BASH_REMATCH[3]}"
 	DEST="${BASH_REMATCH[4]}"
+
+	[[ "${ARTIFACT}" =~ ^([^:[:space:]]+):([^:[:space:]]+):([^:[:space:]]+)(:([^:[:space:]]+)(:([^:[:space:]]+))?)?$ ]] || fail "The artifact string [${ARTIFACT}] is not valid"
+	GROUP_ID="${BASH_REMATCH[1]}"
+	ARTIFACT_ID="${BASH_REMATCH[2]}"
+	VERSION="${BASH_REMATCH[3]}"
+	PACKAGING="${BASH_REMATCH[5]}"
+	CLASSIFIER="${BASH_REMATCH[7]}"
 
 	REPO=()
 	REPO_MSG=""
@@ -62,6 +69,12 @@ for n in "${@}" ; do
 	fi
 
 	say "👉 Downloading [${ARTIFACT}]${REPO_MSG}"
+	say "\tGroupId:    ${GROUP_ID}"
+	say "\tArtifactId: ${ARTIFACT_ID}"
+	say "\tVersion:    ${VERSION}"
+	[ -z "${PACKAGING}" ] || say "\tPackaging:  ${PACKAGING}"
+	[ -z "${CLASSIFIER}" ] || say "\tClassifier: ${CLASSIFIER}"
+
 	"${MVN}" -q -U -Dmaven.repo.local="${M2_DIR}" dependency:get -Dtransitive=false -Dartifact="${ARTIFACT}" "${REPO[@]}" || fail "Failed to download [${ARTIFACT}]${REPO_MSG}"
 	say "\t✅ Download complete!"
 
@@ -86,5 +99,7 @@ for n in "${@}" ; do
 	fi
 
 	/usr/bin/mv -f "${SRC_FILE}" "${DEST}" || fail "Failed to copy [${ARTIFACT}] into [${DEST}]"
+	say "\t👉 Rendering helpers..."
+	/usr/local/bin/render-helpers "${DEST}" "${VERSION}" || fail "Failed to render the helpers for [${DEST}]"
 	say "\t✅ Copy complete! Final file: [${DEST}]"
 done
