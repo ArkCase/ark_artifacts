@@ -67,8 +67,24 @@ for n in "${@}" ; do
 
 	say "👉 Copying [${ARTIFACT}] into its final location at [${DEST}]..."
 	"${MVN}" -q -Dmaven.repo.local="${M2_DIR}" dependency:copy -Dartifact="${ARTIFACT}" -DoutputDirectory="${INT_DIR}" -DuseBaseVersion=true -DoutputAbsoluteArtifactFilename=true || fail "Failed to copy [${ARTIFACT}] into the work directory"
+
 	SRC_FILE="$(find "${INT_DIR}" -type f | sort | head -1)"
-	say "\t👉 Intermediate copy... (${SRC_FILE##*/})"
+	SRC_FILE_NAME="${SRC_FILE##*/}"
+	say "\t👉 Intermediate copy... (${SRC_FILE_NAME})"
+
+	DEST_DIR="$(dirname "${DEST}")"
+	DEST_NAME="$(basename "${DEST}")"
+	[ -d "${DEST_DIR}" ] || mkdir -p "${DEST_DIR}" &>/dev/null || fail "Failed to create the destination directory [${DEST_DIR}]"
+	DEST_DIR="$(readlink -f "${DEST_DIR}")"
+
+	DEST="${DEST_DIR}/${DEST_NAME}"
+
+	# If the destination already exists, then ... if it's a directory, we must append the artifact's filename
+	# if it's a file, we use the filename as-is
+	if [ -e "${DEST}" ] ; then
+		[ -d "${DEST}" ] && DEST+="/${SRC_FILE_NAME}"
+	fi
+
 	/usr/bin/mv -f "${SRC_FILE}" "${DEST}" || fail "Failed to copy [${ARTIFACT}] into [${DEST}]"
-	say "\t✅ Copy complete!"
+	say "\t✅ Copy complete! Final file: [${DEST}]"
 done

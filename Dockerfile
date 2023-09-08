@@ -92,12 +92,14 @@ COPY "httpuploader.ini" "${UPLOADER_CFG}"
 COPY \
     "entrypoint" \
     "httpuploader.py" \
+    "mvn-get" \
     "prep-artifact" \
     "render-helpers" \
     "rebuild-helpers" \
     "/usr/local/bin/"
 RUN chmod a+rx \
         "/usr/local/bin/entrypoint" \
+        "/usr/local/bin/mvn-get" \
         "/usr/local/bin/prep-artifact" \
         "/usr/local/bin/httpuploader.py" \
         "/usr/local/bin/render-helpers" \
