@@ -45,6 +45,8 @@ trap cleanup EXIT
 M2_DIR="${WORK_DIR}/m2"
 INT_DIR="${WORK_DIR}/int"
 
+LOCAL=(-Dmaven.repo.local="${M2_DIR}")
+
 # Each parameter is of the form artifact[@repo]=target
 for n in "${@}" ; do
 	# TODO: Split the repo from the artifact
@@ -75,20 +77,28 @@ for n in "${@}" ; do
 	[ -z "${PACKAGING}" ] || say "\tPackaging:  ${PACKAGING}"
 	[ -z "${CLASSIFIER}" ] || say "\tClassifier: ${CLASSIFIER}"
 
-	"${MVN}" -q -U -Dmaven.repo.local="${M2_DIR}" dependency:get -Dtransitive=false -Dartifact="${ARTIFACT}" "${REPO[@]}" || fail "Failed to download [${ARTIFACT}]${REPO_MSG}"
+	"${MVN}" -e -q -U "${LOCAL[@]}" dependency:get -Dartifact="${ARTIFACT}" "${REPO[@]}" -Dtransitive=false || fail "Failed to download [${ARTIFACT}]${REPO_MSG}"
 	say "\t✅ Download complete!"
 
 	say "👉 Copying [${ARTIFACT}] into its final location at [${DEST}]..."
-	"${MVN}" -q -Dmaven.repo.local="${M2_DIR}" dependency:copy -Dartifact="${ARTIFACT}" -DoutputDirectory="${INT_DIR}" -DuseBaseVersion=true -DoutputAbsoluteArtifactFilename=true || fail "Failed to copy [${ARTIFACT}] into the work directory"
+	"${MVN}" -q "${LOCAL[@]}" dependency:copy -Dartifact="${ARTIFACT}" -DoutputDirectory="${INT_DIR}" -Dmdep.stripClassifier=true -Dmdep.stripVersion=true -Dmdep.useBaseVersion=true -DoutputAbsoluteArtifactFilename=true || (
+		set -euo pipefail
+		say "\t⚠️ Maven Copy failed - will try a manual copy"
+		ARTIFACT_PATH="${GROUP_ID//.//}/${ARTIFACT_ID}/${VERSION}"
+		FILE="$(/usr/bin/find "${M2_DIR}/${ARTIFACT_PATH}" -type f -name "${ARTIFACT_ID}-${VERSION}*" -not -name "*.lastUpdated" -not -name "*.sha1" -not -name "*.pom")"
+		[ -n "${FILE}" ] && [ -e "${FILE}" ] || exit 1
+		/usr/bin/cp -f "${FILE}" "${INT_DIR}"
+		say "\t✅ Manual copy succeeded!"
+	) || fail "Failed to copy [${ARTIFACT}] into the work directory"
 
-	SRC_FILE="$(find "${INT_DIR}" -type f | sort | head -1)"
+	SRC_FILE="$(/usr/bin/find "${INT_DIR}" -type f | /usr/bin/sort | /usr/bin/head -1)"
 	SRC_FILE_NAME="${SRC_FILE##*/}"
 	say "\t👉 Intermediate copy... (${SRC_FILE_NAME})"
 
-	DEST_DIR="$(dirname "${DEST}")"
-	DEST_NAME="$(basename "${DEST}")"
+	DEST_DIR="$(/usr/bin/dirname "${DEST}")"
+	DEST_NAME="$(/usr/bin/basename "${DEST}")"
 	[ -d "${DEST_DIR}" ] || mkdir -p "${DEST_DIR}" &>/dev/null || fail "Failed to create the destination directory [${DEST_DIR}]"
-	DEST_DIR="$(readlink -f "${DEST_DIR}")"
+	DEST_DIR="$(/usr/bin/readlink -f "${DEST_DIR}")"
 
 	DEST="${DEST_DIR}/${DEST_NAME}"
 
