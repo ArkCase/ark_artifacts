@@ -74,12 +74,14 @@ curl_pull() {
 	[ ${RC} -eq 0 ] || fail "Failed to query the accessibility for URL [${URL}]"
 
 	# If the HTTP code is above 401, we can't do anything about it...
-	[ ${HTTP_CODE} -le 400 ] || fail "Unable to access URL [${URL}]: HTTP CODE = [${HTTP_CODE}]"
-
-	# If the HTTP code is a 401, best we can do is figure out which auth creds
-	# to use when fetching the URL
 	local AUTH=""
-	if [ ${HTTP_CODE} -eq 401 ] ; then
+	if [ ${HTTP_CODE} -ge 400 ] ; then
+
+		# The only one we can do anything about, is 401 ... we can try to authenticate
+		[ ${HTTP_CODE} -eq 401 ] || fail "Unable to access URL [${URL}]: HTTP CODE = [${HTTP_CODE}]"
+
+		# If the HTTP code is a 401, best we can do is figure out which auth creds
+		# to use when fetching the URL
 		#
 		# If the file pointed to by the CURL_AUTH_FILE envvar exists and is readable,
 		# then that file will be used as a username/password table. The first column
@@ -137,7 +139,7 @@ curl_pull() {
 		# CURL_USER and CURL_PASSWORD will be used as the credentials,
 		# if they're set and non-empty. Decryption will be attempted,
 		# and if it fails then the verbatim values will be used.
-		if [ -z "${AUTH}" ] && [ -v CURL_USERNAME ] && [ -n "${CURL_USERNAME}" ] ; then
+		if [ -z "${AUTH}" ] && [ -v CURL_USERNAME ] && [ -n "${CURL_USERNAME:-""}" ] ; then
 			USERNAME="$(decrypt "${CURL_USERNAME}")"
 			PASSWORD="$(decrypt "${CURL_PASSWORD:-""}")"
 			AUTH="${USERNAME}:${PASSWORD}"
@@ -149,7 +151,11 @@ curl_pull() {
 
 pull() {
 	local URL="${1}"
-	if [[ "${URL,,}" =~ ^[a-z][-+.a-z0-9]*:// ]] ; then
+	if [[ "${URL,,}" =~ ^[-a-zA-Z0-9_.]+(:[-a-zA-Z0-9_.]+){2,4}$ ]] ; then
+		# This is a Maven pull, so use mvn-get
+		# TODO: How to output the artifact to stdout? Better off just using mvn-get...
+		:
+	elif [[ "${URL,,}" =~ ^[a-z][-+.a-z0-9]*:// ]] ; then
 		# It's a URL, so pull it with CURL
 		curl_pull "${URL}"
 	else
