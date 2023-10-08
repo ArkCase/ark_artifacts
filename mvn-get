@@ -80,11 +80,14 @@ for n in "${@}" ; do
 	"${MVN}" -e -q -U "${LOCAL[@]}" dependency:get -Dartifact="${ARTIFACT}" "${REPO[@]}" -Dtransitive=false || fail "Failed to download [${ARTIFACT}]${REPO_MSG}"
 	say "\t✅ Download complete!"
 
+	ARTIFACT_PATH="${GROUP_ID//.//}/${ARTIFACT_ID}/${VERSION}"
+	say "👉 Removing remote repository references from [${M2_DIR}]..."
+	/usr/bin/find "${ARTIFACT_PATH}" -name "_remote.repositories" -exec /usr/bin/rm -f '{}' ';' || true
+
 	say "👉 Copying [${ARTIFACT}] into its final location at [${DEST}]..."
 	"${MVN}" -q "${LOCAL[@]}" dependency:copy -Dartifact="${ARTIFACT}" -DoutputDirectory="${INT_DIR}" -Dmdep.stripClassifier=true -Dmdep.stripVersion=true -Dmdep.useBaseVersion=true -DoutputAbsoluteArtifactFilename=true || (
 		set -euo pipefail
 		say "\t⚠️ Maven Copy failed - will try a manual copy"
-		ARTIFACT_PATH="${GROUP_ID//.//}/${ARTIFACT_ID}/${VERSION}"
 		FILE="$(/usr/bin/find "${M2_DIR}/${ARTIFACT_PATH}" -type f -name "${ARTIFACT_ID}-${VERSION}*" -not -name "*.lastUpdated" -not -name "*.sha1" -not -name "*.pom")"
 		[ -n "${FILE}" ] && [ -e "${FILE}" ] || exit 1
 		/usr/bin/cp -f "${FILE}" "${INT_DIR}"
