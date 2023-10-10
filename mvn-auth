@@ -3,6 +3,25 @@ SCRIPT="$(/usr/bin/readlink -f "${0}")"
 BASEDIR="$(/usr/bin/dirname "${SCRIPT}")"
 SCRIPT="$(/usr/bin/basename "${SCRIPT}")"
 
+################################################################################
+# This is an example of mvn-auth.conf
+################################################################################
+#
+# <?xml version="1.0" encoding="utf-8"?>
+# <mvn-get>
+#     <server>
+#         <id>repoId</id>
+#         <url>https://some-url-location</url>
+#         <username>myUserName</username>
+#         <password>myPassword</password>
+#     </server>
+#     <server>
+#         <!-- ... -->
+#     </server>
+# </mvn-get>
+#
+################################################################################
+
 set -euo pipefail
 
 timestamp()
