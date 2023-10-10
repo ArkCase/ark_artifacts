@@ -53,8 +53,7 @@ fail()
 usage()
 {
 	{
-		echo -e "usage: ${BASH_ARGV0:-${BASH_SOURCE:-${0}}} (get repoId | show) [sourceFile]"
-		echo -e ""
+		echo -e "usage: ${BASH_ARGV0:-${BASH_SOURCE:-${0}}} (get repoId | show) [sourceFile] | (encrypt|decrypt) valueToProcess"
 		echo -e ""
 		echo -e "\tget repoId:"
 		echo -e "\t\tProduces two columns of output, separated by a single space:"
@@ -68,6 +67,12 @@ usage()
 		echo -e "\t\tThe file from which to read the configurations. If not given,"
 		echo -e "\t\tthe default will be './mvn-auth.conf'. If '-' is used, then"
 		echo -e "\t\tthe data will be read from STDIN"
+		echo -e ""
+		echo -e "\tencrypt valueToProcess:"
+		echo -e "\tdecrypt valueToProcess:"
+		echo -e "\t\tEncrypt/decrypt the given value using the key specified via the"
+		echo -e "\t\tenvironment variable MVN_AUTH_KEY (which cannot be an"
+		echo -e "\t\tempty string, or the process will fail)"
 	} 1>&2
 	exit 1
 }
@@ -94,9 +99,64 @@ get_value()
 	"${XMLSTARLET}" sel -t -v "/mvn-get/server[id = \"${ID}\"]/${VALUE}" <<< "${MVN_AUTH}"
 }
 
+encrypt()
+{
+	local VALUE="${1}"
+
+	local REQUIRED="false"
+	[ ${#} -ge 2 ] && REQUIRED="${2,,}"
+	case "${REQUIRED}" in
+		true ) REQUIRED="true" ;;
+		* ) REQUIRED="false" ;;
+	esac
+
+	if "${REQUIRED}" ; then
+		[ -v MVN_AUTH_KEY ] || fail "No MVN_AUTH_KEY value is set, cannot continue"
+		[ -n "${MVN_AUTH_KEY}" ] || fail "The MVN_AUTH_KEY value is empty, cannot continue"
+	fi
+
+	if [ -v MVN_AUTH_KEY ] && [ -n "${MVN_AUTH_KEY}" ] ; then
+		local RC=0
+		openssl aes-256-cbc \
+			-a -A -salt -iter 5 \
+			-kfile <(echo -n "${MVN_AUTH_KEY}") 2>/dev/null < <(echo -n "${VALUE}") || RC=${?}
+		[ ${RC} -eq 0 ] && return 0
+		${REQUIRED} && fail "Failed to decrypt the value (rc=${RC})"
+	fi
+
+	# Nothing to decrypt with, or decryption failed but wasn't required
+	echo -n "${VALUE}"
+	return 0
+}
+
 decrypt()
 {
-	echo -n "${@}"
+	local VALUE="${1}"
+
+	local REQUIRED="false"
+	[ ${#} -ge 2 ] && REQUIRED="${2,,}"
+	case "${REQUIRED}" in
+		true ) REQUIRED="true" ;;
+		* ) REQUIRED="false" ;;
+	esac
+
+	if "${REQUIRED}" ; then
+		[ -v MVN_AUTH_KEY ] || fail "No MVN_AUTH_KEY value is set, cannot continue"
+		[ -n "${MVN_AUTH_KEY}" ] || fail "The MVN_AUTH_KEY value is empty, cannot continue"
+	fi
+
+	if [ -v MVN_AUTH_KEY ] && [ -n "${MVN_AUTH_KEY}" ] ; then
+		local RC=0
+		openssl aes-256-cbc \
+			-a -A -salt -iter 5 -d \
+			-kfile <(echo -n "${MVN_AUTH_KEY}") 2>/dev/null < <(echo -n "${VALUE}") || RC=${?}
+		[ ${RC} -eq 0 ] && return 0
+		${REQUIRED} && fail "Failed to decrypt the value (rc=${RC})"
+	fi
+
+	# Nothing to decrypt with, or decryption failed but wasn't required
+	echo -n "${VALUE}"
+	return 0
 }
 
 [ ${#} -ge 1 ] || usage
@@ -116,6 +176,7 @@ elif [ ${#} -eq 2 ] ; then
 				[[ "${ID}" =~ ^[a-zA-Z0-9][-/._a-zA-Z0-9]*$ ]] || fail "The repository ID [${ID}] is invalid"
 				GET="true"
 				;;
+		encrypt | decrypt ) "${1}" "${2}" ; exit ${?} ;;
 	esac
 elif [ ${#} -eq 3 ] ; then
 	case "${1,,}" in
