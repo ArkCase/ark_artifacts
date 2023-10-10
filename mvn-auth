@@ -66,7 +66,8 @@ usage()
 		echo -e "\t[sourceFile]: (optional)"
 		echo -e "\t\tThe file from which to read the configurations. If not given,"
 		echo -e "\t\tthe default will be './mvn-auth.conf'. If '-' is used, then"
-		echo -e "\t\tthe data will be read from STDIN"
+		echo -e "\t\tthe data will be read from STDIN. Can also be set via the"
+		echo -e "\t\tenvironment variable MVN_AUTH_CONF."
 		echo -e ""
 		echo -e "\tencrypt valueToProcess:"
 		echo -e "\tdecrypt valueToProcess:"
@@ -96,7 +97,7 @@ get_value()
 {
 	local VALUE="${1}"
 	local ID="${2}"
-	"${XMLSTARLET}" sel -t -v "/mvn-get/server[id = \"${ID}\"]/${VALUE}" <<< "${MVN_AUTH}"
+	"${XMLSTARLET}" sel -t -v "/mvn-get/server[id = \"${ID}\"]/${VALUE}" <<< "${MVN_AUTH_CONF}"
 }
 
 encrypt()
@@ -171,7 +172,7 @@ if [ ${#} -eq 1 ] ; then
 	esac
 elif [ ${#} -eq 2 ] ; then
 	case "${1,,}" in
-		show )	MVN_AUTH="${2}" ; SHOW="true" ;;
+		show )	MVN_AUTH_CONF="${2}" ; SHOW="true" ;;
 		get )	ID="${2}"
 				[[ "${ID}" =~ ^[a-zA-Z0-9][-/._a-zA-Z0-9]*$ ]] || fail "The repository ID [${ID}] is invalid"
 				GET="true"
@@ -181,7 +182,7 @@ elif [ ${#} -eq 2 ] ; then
 elif [ ${#} -eq 3 ] ; then
 	case "${1,,}" in
 		get )	ID="${2}"
-				MVN_AUTH="${3}"
+				MVN_AUTH_CONF="${3}"
 				[[ "${ID}" =~ ^[a-zA-Z0-9][-/._a-zA-Z0-9]*$ ]] || fail "The repository ID [${ID}] is invalid"
 				GET="true"
 				;;
@@ -191,15 +192,15 @@ fi
 # If we're neither showing nor getting ... we explode!
 "${SHOW}" || "${GET}" || usage
 
-[ -v MVN_AUTH ] || MVN_AUTH="mvn-auth.conf"
+[ -v MVN_AUTH_CONF ] || MVN_AUTH_CONF="mvn-auth.conf"
 
 if "${SHOW}" ; then
-	load_conf "${MVN_AUTH}" || true
+	load_conf "${MVN_AUTH_CONF}" || true
 	exit 0
 fi
 
 if "${GET}" ; then
-	MVN_AUTH="$(load_conf "${MVN_AUTH}")" || warn "No authentication data is available" 1>&2
+	MVN_AUTH_CONF="$(load_conf "${MVN_AUTH_CONF}")" || warn "No authentication data is available" 1>&2
 	XMLSTARLET="$(type -P xmlstarlet)" || fail "xmlstarlet is not installed - cannot proceed"
 
 	get_value "id" "${ID}" &>/dev/null || fail "Repository ID [${ID}] is not defined"
