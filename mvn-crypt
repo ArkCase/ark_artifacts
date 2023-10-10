@@ -306,6 +306,7 @@ def __main__():
 	parser.add_argument("-l", "--location", metavar=".m2-location", action="store", help="The location to use as the directory where the Maven settings files are housed (normally $HOME/.m2)", nargs=1)
 	parser.add_argument("-s", "--settings", metavar="settings.xml", action="store", help="The XML file to use as the settings.xml file instead of the default", nargs=1)
 	parser.add_argument("-S", "--security", metavar="settings-security.xml", action="store", help="The XML file to use as the settings-security.xml file instead of the default", nargs=1)
+	parser.add_argument("-q", "--quiet", action="store_true", help="Disable errors when files aren't found, and just return empty values")
 
 	commands = parser.add_subparsers(help="Command Help", dest="mode")
 
@@ -372,57 +373,64 @@ def __main__():
 		settings = f"{location}/{FILE_SETTINGS}"
 
 	# If we were given a settings-security.xml file, validate its existence!
-	if security:
-		if not os.path.exists(security):
-			raise Exception(f"Security file not found at [{security}]")
-		if not os.path.isfile(security):
-			raise Exception(f"Path [{security}] is not a regular file")
-		security = os.path.realpath(security)
+	try:
+		if security:
+			if not os.path.exists(security):
+				raise Exception(f"Security file not found at [{security}]")
+			if not os.path.isfile(security):
+				raise Exception(f"Path [{security}] is not a regular file")
+			security = os.path.realpath(security)
 
-	# If we were given a settings.xml file, validate its existence!
-	if settings:
-		settings = settings
-		if not os.path.exists(settings):
-			raise Exception(f"Settings file not found at [{settings}]")
-		if not os.path.isfile(settings):
-			raise Exception(f"Path [{settings}] is not a regular file")
-		settings = os.path.realpath(settings)
+		# If we were given a settings.xml file, validate its existence!
+		if settings:
+			settings = settings
+			if not os.path.exists(settings):
+				raise Exception(f"Settings file not found at [{settings}]")
+			if not os.path.isfile(settings):
+				raise Exception(f"Path [{settings}] is not a regular file")
+			settings = os.path.realpath(settings)
 
-	if args.mode == MODE_MASTER:
-		if args.op == MODE_ENCRYPT:
-			masterPass = encryptAndDecorate(args.valueToEncrypt[0], MASTER_SECRET)
-		elif args.op == MODE_DECRYPT:
-			if args.valueToDecrypt is None:
-				masterPass = decryptMasterPassword(security)
+		if args.mode == MODE_MASTER:
+			if args.op == MODE_ENCRYPT:
+				masterPass = encryptAndDecorate(args.valueToEncrypt[0], MASTER_SECRET)
+			elif args.op == MODE_DECRYPT:
+				if args.valueToDecrypt is None:
+					masterPass = decryptMasterPassword(security)
+				else:
+					masterPass = decryptDecorated(args.valueToDecrypt, MASTER_SECRET)
 			else:
-				masterPass = decryptDecorated(args.valueToDecrypt, MASTER_SECRET)
-		else:
-			raise Exception(f"Unknown {args.mode} operations mode requested: {args.op}")
+				master.print_help(sys.stderr)
+				sys.exit(1)
 
-		if masterPass:
-			print(f"{masterPass}")
-		exit(0)
+			if masterPass:
+				print(f"{masterPass}")
+			exit(0)
 
-	if args.mode == MODE_SERVER:
-		if (not settings) or (not security):
-			raise Exception("To decrypt server values the settings.xml and settings-security.xml files must both exist")
-		masterPass = decryptMasterPassword(security)
-		if not masterPass:
-			raise Exception("No master password was decoded, cannot continue!")
+		if args.mode == MODE_SERVER:
+			if (not settings) or (not security):
+				raise Exception("To decrypt server values the settings.xml and settings-security.xml files must both exist")
+			masterPass = decryptMasterPassword(security)
+			if not masterPass:
+				raise Exception("No master password was decoded, cannot continue!")
 
-		if args.op == MODE_ENCRYPT:
-			finalPass = encryptAndDecorate(args.valueToEncrypt[0], masterPass)
-		elif args.op == MODE_DECRYPT:
-			finalPass = decryptDecorated(readServerValue(settings, args.serverId[0], args.valueName[0]), masterPass)
-		else:
-			raise Exception(f"Unknown {args.mode} operations mode requested: {args.op}")
+			if args.op == MODE_ENCRYPT:
+				finalPass = encryptAndDecorate(args.valueToEncrypt[0], masterPass)
+			elif args.op == MODE_DECRYPT:
+				finalPass = decryptDecorated(readServerValue(settings, args.serverId[0], args.valueName[0]), masterPass)
+			else:
+				server.print_help(sys.stderr)
+				sys.exit(1)
 
-		if finalPass:
-			print(f"{finalPass}")
-		exit(0)
+			if finalPass:
+				print(f"{finalPass}")
+			exit(0)
 		
-	parser.print_help(sys.stderr)
-	sys.exit(1)
+		parser.print_help(sys.stderr)
+		sys.exit(1)
+	except Exception as e:
+		if args.quiet:
+			return True
+		raise e
 
 #
 # First things first: are we being run as a script?
