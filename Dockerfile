@@ -94,6 +94,7 @@ COPY \
     "httpuploader.py" \
     "mvn-get" \
     "mvn-auth" \
+    "mvn-crypt" \
     "prep-artifact" \
     "render-helpers" \
     "rebuild-helpers" \
@@ -102,6 +103,7 @@ RUN chmod a+rx \
         "/usr/local/bin/entrypoint" \
         "/usr/local/bin/mvn-get" \
         "/usr/local/bin/mvn-auth" \
+        "/usr/local/bin/mvn-crypt" \
         "/usr/local/bin/prep-artifact" \
         "/usr/local/bin/httpuploader.py" \
         "/usr/local/bin/render-helpers" \
