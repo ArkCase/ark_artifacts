@@ -1,4 +1,7 @@
 #!/bin/bash
+SCRIPT="$(/usr/bin/readlink -f "${0}")"
+BASEDIR="$(/usr/bin/dirname "${SCRIPT}")"
+SCRIPT="$(/usr/bin/basename "${SCRIPT}")"
 
 set -euo pipefail
 
@@ -31,13 +34,16 @@ download()
 get_repo_auth()
 {
 	local URL="${1}"
-	# TODO: How to fetch this?
+	[ -n "${MVN_AUTH_DATA}" ] || return 0
+
+	# Ok ... get the auth information
+	"${MVN_AUTH}" get "${URL}" <<< "${MVN_AUTH_DATA}"
 }
 
 usage()
 {
 	{
-		echo -e "usage: ${BASH_SOURCE:-${0}} spec1 [spec2 spec3 ... specN]"
+		echo -e "usage: ${BASH_ARGV0:-${BASH_SOURCE:-${0}}} spec1 [spec2 spec3 ... specN]"
 		echo -e ""
 		echo -e "\tArtifact specs are of the form artifact[@repo]=target"
 		echo -e ""
@@ -54,9 +60,20 @@ usage()
 XMLSTARLET="$(type -P xmlstarlet)" || fail "xmlstarlet is not installed - cannot proceed"
 CURL="$(type -P curl)" || fail "curl is not installed - cannot proceed"
 
+MVN_AUTH="${BASEDIR}/mvn-auth"
+
+if [ -f "${MVN_AUTH}" ] && [ -x "${MVN_AUTH}" ] ; then
+	# This will list and cache the auth data so we don't load it every
+	# time we wish to query it
+	MVN_AUTH_DATA="$("${MVN_AUTH}" show)"
+else
+	say "⚠️ No authentication module is available"
+	MVN_AUTH_DATA=""
+fi
+
 # Each parameter is of the form artifact[@repo]=target
 for n in "${@}" ; do
-	# TODO: Split the repo from the artifact
+	# TODO: Split the repo from the artifact so they're separate parameters?
 
 	[[ "${n}" =~ ^([^@=[:space:]]+)(@([^=[:space:]]*))?=(.+)$ ]] || fail "Artifact spec [${n}] is not valid"
 	ARTIFACT="${BASH_REMATCH[1]}"
@@ -70,15 +87,24 @@ for n in "${@}" ; do
 	EXTENSION="${BASH_REMATCH[5]}"
 	CLASSIFIER="${BASH_REMATCH[7]}"
 
-	AUTH="$(get_repo_auth "${REPO_URL}")"
+	if [[ "${REPO_URL,,}" =~ ^[a-zA-Z0-9][-/._a-zA-Z0-9]*$ ]] ; then
+		read USERPW64 REAL_URL REST < <(get_repo_auth "${REPO_URL}") || true
+		AUTH="$(base64 -d <<< "${USERPW64}")"
+		REPO_URL="${REAL_URL}"
+	elif [[ "${REPO_URL,,}" =~ ^https?:// ]] ; then
+		# Nothing to do ... auth is not supported for inlined URLs... yet ;)
+		AUTH=""
+	else
+		fail "Repository [${REPO_URL}] from artifact parameter [${n}] is neither a URL nor a valid repository ID"
+	fi
 
 	GROUP_PATH="${GROUP_ID//./\/}"
 	BASE="${REPO_URL}/${GROUP_PATH}/${ARTIFACT_ID}/${VERSION}"
 
 	say "👉 Downloading:"
-	say "\tArtifact:   [${ARTIFACT}]"
-	say "\tRepository: [${REPO_URL}]"
-	say "\tFile:       [${DEST}]"
+	say "\tArtifact:    [${ARTIFACT}]"
+	say "\tRepository:  [${REPO_URL}]"
+	say "\tDestination: [${DEST}]"
 
 	FINAL_VERSION="${VERSION}"
 	if [[ "${VERSION}" =~ -SNAPSHOT$ ]] ; then
@@ -87,7 +113,7 @@ for n in "${@}" ; do
 		TIMESTAMP="$("${XMLSTARLET}" sel -t -v '/metadata/versioning/snapshot/timestamp' <<< "${POM}")"
 		BUILD_NUMBER="$("${XMLSTARLET}" sel -t -v '/metadata/versioning/snapshot/buildNumber' <<< "${POM}")"
 		FINAL_VERSION="$(echo -n "${VERSION}" | sed -e "s/-SNAPSHOT$/-${TIMESTAMP}-${BUILD_NUMBER}/g")"
-		say "✅ The latest snapshot version is ${FINAL_VERSION}"
+		say "\t✅ The latest snapshot version is ${FINAL_VERSION}"
 	fi
 
 	BASE="${BASE}/${ARTIFACT_ID}-${FINAL_VERSION}"
@@ -96,7 +122,7 @@ for n in "${@}" ; do
 		POM="$(download "${BASE}.pom" "${AUTH}" 2>/dev/null)" || fail "Failed to download the artifact POM for ${GROUP_ID}:${ARTIFACT_ID}:${VERSION}"
 		EXTENSION="$("${XMLSTARLET}" sel -N "p=http://maven.apache.org/POM/4.0.0" -t -v '/p:project/p:packaging' <<< "${POM}")"
 		[ -z "${EXTENSION}" ] && EXTENSION="jar"
-		say "✅ Will download the ${EXTENSION} artifact"
+		say "\t✅ Will download the ${EXTENSION} artifact"
 	fi
 
 	# Must be given explicitly ...
