@@ -64,10 +64,8 @@ usage()
 	{
 		echo -e "usage: ${BASH_ARGV0:-${BASH_SOURCE:-${0}}} artifactSpec repoUrl target"
 		echo -e ""
-		echo -e "\tArtifact specs are of the form artifact[@repo]=target"
-		echo -e ""
 		echo -e "\t\tartifactSpec: groupId:artifactId[:version[:packaging[:classifier]]]"
-		echo -e "\t\trepoUrl:      URL to the Maven repository housing the artifact"
+		echo -e "\t\trepoUrl:      URL to the Maven repository housing the artifact (http:// or https://)"
 		echo -e "\t\ttarget:       The final path where the file will be copied into. If it's"
 		echo -e "\t\t              a directory, the downloaded filename will be preserved."
 		echo -e ""
