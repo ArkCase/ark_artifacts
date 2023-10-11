@@ -31,6 +31,34 @@ download()
 	"${CURL}" --location --fail --disallow-username-in-url --config <(echo -n "${AUTH}") "${DEST[@]}" "${URL}"
 }
 
+decrypt() {
+	local VALUE="${1}"
+
+	local REQUIRED="${2:-"false"}"
+	case "${REQUIRED,,}" in
+		true ) REQUIRED="true" ;;
+		* ) REQUIRED="false" ;;
+	esac
+
+	if "${REQUIRED}" ; then
+		[ -v MVN_GET_ENCRYPTION_KEY ] || fail "No MVN_GET_ENCRYPTION_KEY value is set, cannot continue"
+		[ -n "${MVN_GET_ENCRYPTION_KEY}" ] || fail "The MVN_GET_ENCRYPTION_KEY value is empty, cannot continue"
+	fi
+
+	if [ -v MVN_GET_ENCRYPTION_KEY ] && [ -n "${MVN_GET_ENCRYPTION_KEY}" ] ; then
+		local RC=0
+		openssl aes-256-cbc \
+			-a -A -salt -iter 5 -d \
+			-kfile <(echo -n "${MVN_GET_ENCRYPTION_KEY}") 2>/dev/null < <(echo -n "${VALUE}") || RC=${?}
+		[ ${RC} -eq 0 ] && return 0
+		${REQUIRED} && fail "Failed to decrypt the value (rc=${RC})"
+	fi
+
+	# Nothing to decrypt with, or decryption failed but wasn't required
+	echo -n "${VALUE}"
+	return 0
+}
+
 usage()
 {
 	{
@@ -65,6 +93,7 @@ CLASSIFIER="${BASH_REMATCH[8]}"
 XMLSTARLET="$(type -P xmlstarlet)" || fail "xmlstarlet is not installed - cannot proceed"
 CURL="$(type -P curl)" || fail "curl is not installed - cannot proceed"
 
+NEED_DECRYPT="true"
 if [ -v MVN_GET_SERVER_ID ] ; then
 	# We have a server ID whose username/password combo we wish to consume
 	[ -n "${MVN_GET_SERVER_ID}" ] || fail "The value in MVN_GET_SERVER_ID may not be the empty string"
@@ -73,12 +102,22 @@ if [ -v MVN_GET_SERVER_ID ] ; then
 	[ -n "${MVN_GET_USERNAME}" ] || fail "The username for server [${MVN_GET_SERVER_ID}] is empty or nonexistent"
 	MVN_GET_PASSWORD="$("${MVN_CRYPT}" --quiet server decrypt "${MVN_GET_SERVER_ID}" password)"
 	[ -n "${MVN_GET_PASSWORD}" ] || fail "The password for server [${MVN_GET_SERVER_ID}] is empty or nonexistent"
+	NEED_DECRYPT="false"
 fi
 
 AUTH=""
 if [ -v MVN_GET_USERNAME ] && [ -v MVN_GET_PASSWORD ] ; then
 	[ -n "${MVN_GET_USERNAME}" ] || fail "The value in MVN_GET_USERNAME may not be the empty string"
 	[ -n "${MVN_GET_PASSWORD}" ] || fail "The value in MVN_GET_PASSWORD may not be the empty string"
+
+	# If we need to decrypt values, now is the time
+	if "${NEED_DECRYPT}" ; then
+		# We only do this if it hasn't already been done by MVN_CRYPT, above ...
+		MVN_GET_USERNAME="$(decrypt "${MVN_GET_USERNAME}")" || fail "Failed to decrypt the value in MVN_GET_USERNAME"
+		MVN_GET_PASSWORD="$(decrypt "${MVN_GET_PASSWORD}" "true")" || fail "Failed to decrypt the value in MVN_GET_PASSWORD"
+	fi
+
+	# Join everything together into happy matrimony
 	AUTH="${MVN_GET_USERNAME}:${MVN_GET_PASSWORD}"
 fi
 
