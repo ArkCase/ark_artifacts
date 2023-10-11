@@ -87,7 +87,7 @@ for n in "${@}" ; do
 	EXTENSION="${BASH_REMATCH[6]}"
 	CLASSIFIER="${BASH_REMATCH[8]}"
 
-	[ -n "${VERSION}" ] || VERSION="LATEST"
+	[ -n "${VERSION}" ] || VERSION="RELEASE"
 
 	if [[ "${REPO_URL,,}" =~ ^[a-zA-Z0-9][-/._a-zA-Z0-9]*$ ]] ; then
 		read USERPW64 REAL_URL REST < <(get_repo_auth "${REPO_URL}") || true
