@@ -200,7 +200,14 @@ else
 	DEST="${PARENT}/$(basename "${DEST}")"
 fi
 
-say "👉 Final File: [${DEST}]"
-say "👉 Final URL:  [${URL}]"
+say "👉 Final Version: [${FINAL_VERSION}]"
+say "👉 Final File:    [${DEST}]"
+say "👉 Final URL:     [${URL}]"
 download "${URL}" "${AUTH}" "${DEST}" || fail "Failed to complete the download"
 say "\t✅ Download successful!"
+
+RENDER_HELPERS="$(type -P "${BASEDIR}/render-helpers")" || \
+	RENDER_HELPERS="$(type -P render-helpers)" && \
+	"${RENDER_HELPERS}" "${DEST}" "${FINAL_VERSION}"
+
+exit 0
