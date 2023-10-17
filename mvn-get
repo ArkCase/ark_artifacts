@@ -45,13 +45,14 @@ decrypt() {
 		[ -n "${MVN_GET_ENCRYPTION_KEY}" ] || fail "The MVN_GET_ENCRYPTION_KEY value is empty, cannot continue"
 	fi
 
-	if [ -v MVN_GET_ENCRYPTION_KEY ] && [ -n "${MVN_GET_ENCRYPTION_KEY}" ] ; then
+	[ -v MVN_GET_DECRYPTION_KEY ] || local MVN_GET_ENCRYPTION_KEY=""
+	if [ -n "${MVN_GET_ENCRYPTION_KEY}" ] ; then
 		local RC=0
 		openssl aes-256-cbc \
 			-a -A -salt -iter 5 -d \
 			-kfile <(echo -n "${MVN_GET_ENCRYPTION_KEY}") 2>/dev/null < <(echo -n "${VALUE}") || RC=${?}
 		[ ${RC} -eq 0 ] && return 0
-		${REQUIRED} && fail "Failed to decrypt the value (rc=${RC})"
+		"${REQUIRED}" && fail "Failed to decrypt the value (rc=${RC})"
 	fi
 
 	# Nothing to decrypt with, or decryption failed but wasn't required
