@@ -45,7 +45,7 @@ decrypt() {
 		[ -n "${MVN_GET_ENCRYPTION_KEY}" ] || fail "The MVN_GET_ENCRYPTION_KEY value is empty, cannot continue"
 	fi
 
-	[ -v MVN_GET_DECRYPTION_KEY ] || local MVN_GET_ENCRYPTION_KEY=""
+	[ -v MVN_GET_ENCRYPTION_KEY ] || local MVN_GET_ENCRYPTION_KEY=""
 	if [ -n "${MVN_GET_ENCRYPTION_KEY}" ] ; then
 		local RC=0
 		openssl aes-256-cbc \
