@@ -147,13 +147,13 @@ fi
 
 # If the final version is a snapshot, then we must resolve that
 BASE+="/${VERSION}"
-if "${SUPPORT_SNAPSHOT}" && [[ "${VERSION}" =~ -SNAPSHOT$ ]] ; then
+if "${SUPPORT_SNAPSHOT}" && [[ "${VERSION}" =~ (^|[^a-zA-Z0-9_])SNAPSHOT($|[^a-zA-Z0-9_]) ]] ; then
 	say "⚠️ This version is a SNAPSHOT - identifying the final artifact to download"
 	XML="$(download "${BASE}/maven-metadata.xml" "${AUTH}" 2>/dev/null)" || fail "Failed to download the artifact metadata for ${GROUP_ID}:${ARTIFACT_ID}:${VERSION} from [${BASE}/maven-metadata.xml]"
 	"${XMLLINT}" - <<< "${XML}" &>/dev/null || fail "The artifact metadata for ${GROUP_ID}:${ARTIFACT_ID}:${VERSION} downloaded from [${BASE}/maven-metadata.xml] is not valid XML"
 	TIMESTAMP="$("${XMLSTARLET}" sel -t -v '/metadata/versioning/snapshot/timestamp' <<< "${XML}")" || fail "No timestamp data is present for the required snapshot version, cannot continue"
 	BUILD_NUMBER="$("${XMLSTARLET}" sel -t -v '/metadata/versioning/snapshot/buildNumber' <<< "${XML}")" || fail "No build number data is present for the required snapshot version, cannot continue"
-	FINAL_VERSION="$(echo -n "${VERSION}" | /usr/bin/sed -e "s/-SNAPSHOT$/-${TIMESTAMP}-${BUILD_NUMBER}/g")"
+	FINAL_VERSION="$(echo -n "${VERSION}" | /usr/bin/sed -e "s/\(\b\)SNAPSHOT\(\b\)/\1${TIMESTAMP}-${BUILD_NUMBER}\2/g")"
 	say "\t✅ The latest SNAPSHOT version is ${FINAL_VERSION}"
 fi
 
