@@ -147,7 +147,7 @@ fi
 
 # If the final version is a snapshot, then we must resolve that
 BASE+="/${VERSION}"
-if "${SUPPORT_SNAPSHOT}" && [[ "${VERSION,,}" =~ (^|[^a-zA-Z0-9])SNAPSHOT$ ]] ; then
+if "${SUPPORT_SNAPSHOT}" && [[ "${VERSION^^}" =~ (^|[^a-zA-Z0-9])SNAPSHOT$ ]] ; then
 	say "⚠️ This version is a SNAPSHOT - identifying the final artifact to download"
 	XML="$(download "${BASE}/maven-metadata.xml" "${AUTH}" 2>/dev/null)" || fail "Failed to download the artifact metadata for ${GROUP_ID}:${ARTIFACT_ID}:${VERSION} from [${BASE}/maven-metadata.xml]"
 	"${XMLLINT}" - <<< "${XML}" &>/dev/null || fail "The artifact metadata for ${GROUP_ID}:${ARTIFACT_ID}:${VERSION} downloaded from [${BASE}/maven-metadata.xml] is not valid XML"
