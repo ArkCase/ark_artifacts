@@ -12,7 +12,7 @@
 ARG PUBLIC_REGISTRY="public.ecr.aws"
 ARG ARCH="amd64"
 ARG OS="linux"
-ARG VER="1.4.0"
+ARG VER="1.4.1"
 ARG MVN_VER="3.9.4"
 ARG MVN_SRC="https://archive.apache.org/dist/maven/maven-3/${MVN_VER}/binaries/apache-maven-${MVN_VER}-bin.tar.gz"
 
