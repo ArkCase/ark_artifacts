@@ -70,7 +70,7 @@ curl_pull() {
 
 	# First things first: can we get at it straight up?
 	local RC=0
-	local HTTP_CODE="$(curl -kL --disallow-username-in-url --head "${URL}" -w "%{http_code}" -o /dev/null)" || RC=${?}
+	local HTTP_CODE="$(curl -kLsS --disallow-username-in-url --head "${URL}" -w "%{http_code}" -o /dev/null)" || RC=${?}
 	[ ${RC} -eq 0 ] || fail "Failed to query the accessibility for URL [${URL}]"
 
 	# If the HTTP code is above 401, we can't do anything about it...
@@ -146,7 +146,7 @@ curl_pull() {
 		fi
 	fi
 	[ -z "${AUTH}" ] || AUTH="--user \"${AUTH}\""
-	curl -kL --disallow-username-in-url --fail --config <(echo "${AUTH}") "${URL}"
+	curl -kLsS --disallow-username-in-url --fail --config <(echo "${AUTH}") "${URL}"
 }
 
 pull() {
