@@ -43,11 +43,12 @@ VER=""
 
 # Create the checksum file
 SUM="${FILE}.sum"
-say "👉 Creating the checksum file at [${SUM}]"
-sha256sum < "${FILE}" | sed -e 's;\s.*$;;g' | tr -d '\n' > "${SUM}"
+SHA256="$(sha256sum < "${FILE}" | sed -e 's;\s.*$;;g' | tr -d '\n')"
+say "👉 Creating the checksum file at [${SUM}] with [${SHA256}]"
+echo -n "${SHA256}" > "${SUM}"
 
 VMARK="${FILE}.ver"
-say "👉 Creating the version marker at [${VMARK}]"
+say "👉 Creating the version marker at [${VMARK}] with [${VER}]..."
 echo -n "${VER}" > "${VMARK}"
 
 say "Done"
