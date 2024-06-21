@@ -12,7 +12,7 @@
 ARG PUBLIC_REGISTRY="public.ecr.aws"
 ARG ARCH="amd64"
 ARG OS="linux"
-ARG VER="1.4.2"
+ARG VER="1.5.0"
 
 ARG BASE_REPO="arkcase/base"
 ARG BASE_VER="8"
@@ -87,6 +87,40 @@ ENV UPLOADER_CFG="${UPLOADER_CFG}"
 COPY --chown=root:root "httpuploader.ini" "${UPLOADER_CFG}"
 COPY --chown=root:root scripts/ /usr/local/bin
 RUN chmod a+rx /usr/local/bin/* && chmod a=r "${UPLOADER_CFG}"
+
+ENV ARKCASE_DIR="${FILE_DIR}/arkcase"
+ENV ARKCASE_CONF_DIR="${ARKCASE_DIR}/conf"
+ENV ARKCASE_EXTS_DIR="${ARKCASE_DIR}/exts"
+ENV ARKCASE_WARS_DIR="${ARKCASE_DIR}/wars"
+
+ENV PENTAHO_DIR="${FILE_DIR}/pentaho"
+ENV PENTAHO_ANALYTICAL_DIR="${PENTAHO_DIR}/analytical"
+ENV PENTAHO_REPORTS_DIR="${PENTAHO_DIR}/reports"
+
+ENV SOLR_DIR="${FILE_DIR}/solr"
+ENV SOLR_CONFIG_DIR="${SOLR_DIR}/configs"
+ENV SOLR_COLLECTIONS_DIR="${SOLR_DIR}/collections"
+
+#
+# TODO: More artifacts for deployment here ... maybe even for
+# Alfresco initialization and the like
+#
+
+#
+# Make sure the base tree is created properly
+#
+RUN for n in \
+        "${ARKCASE_DIR}" \
+        "${ARKCASE_CONF_DIR}" \
+        "${ARKCASE_WARS_DIR}" \
+        "${ARKCASE_EXTS_DIR}" \
+        "${PENTAHO_DIR}" \
+        "${PENTAHO_ANALYTICAL_DIR}" \
+        "${PENTAHO_REPORTS_DIR}" \
+        "${SOLR_DIR}" \
+        "${SOLR_CONFIG_DIR}" \
+        "${SOLR_COLLECTIONS_DIR}" \
+    ; do mkdir -p "${n}" ; done
 
 USER root
 WORKDIR "${FILE_DIR}"
