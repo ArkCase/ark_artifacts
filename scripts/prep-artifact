@@ -1,33 +1,17 @@
 #!/bin/bash
-
-# Enable debugging ...
-[ -v DEBUG ] || DEBUG="false"
-case "${DEBUG,,}" in
-	true ) DEBUG="true" ;;
-	* ) DEBUG="false" ;;
-esac
-${DEBUG} && set -x
-
 set -euo pipefail
+. /.functions
+
+set_as_boolean DEBUG
+${DEBUG} && set -x
 
 # If we're not explicitly given the name of the file to use as our
 # auth table, we use the file in the current directory
-[ -v CURL_AUTH_FILE ] || export CURL_AUTH_FILE="curl.auth"
+set_or_default CURL_AUTH_FILE "curl.auth"
+export CURL_AUTH_FULE
 
-timestamp() {
-	date -Ins
-}
-
-say() {
-	echo -e "$(timestamp): ${@}"
-}
-
-fail() {
-	say "${@}" 1>&2
-	exit ${EXIT_CODE:-1}
-}
-
-usage() {
+usage()
+{
 	echo -e "usage: ${BASH_SOURCE:-${0}} source targetFile [version]"
 	echo -e ""
 	echo -e "	The source may be a local path or a curl-compatible URL"
@@ -36,7 +20,8 @@ usage() {
 	exit 1
 }
 
-decrypt() {
+decrypt()
+{
 	local VALUE="${1}"
 
 	local REQUIRED="false"
@@ -65,7 +50,8 @@ decrypt() {
 	return 0
 }
 
-curl_pull() {
+curl_pull()
+{
 	local URL="${1}"
 
 	# First things first: can we get at it straight up?
@@ -149,7 +135,8 @@ curl_pull() {
 	curl -kLsS --disallow-username-in-url --fail --config <(echo "${AUTH}") "${URL}"
 }
 
-pull() {
+pull()
+{
 	local URL="${1}"
 	if [[ "${URL,,}" =~ ^[-a-zA-Z0-9_.]+(:[-a-zA-Z0-9_.]+){2,4}$ ]] ; then
 		# This is a Maven pull, so use mvn-get
@@ -172,7 +159,8 @@ pull() {
 	fi
 }
 
-save_target() {
+save_target()
+{
 	local TGT="${1}"
 	local VER="${2}"
 	tee --output-error=exit "${TGT}" || return ${?}
@@ -180,7 +168,8 @@ save_target() {
 	echo -n "${VER}" > "${TGT}.ver"
 }
 
-render_sum() {
+render_sum()
+{
 	local SUM="${1}"
 	read SHA256 REST < <(sha256sum) || true
 	echo -n "${SHA256}" > "${SUM}"

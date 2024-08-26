@@ -1,12 +1,12 @@
 #!/bin/bash
 
 set -euo pipefail
+. /.functions
 
 #
 # Update the SSL configurations
 #
-[ -v SSL_DIR ] || SSL_DIR="/.ssl"
-acme-init
+init_ssl
 
 #
 # Make sure all helper files are up-to-date
@@ -17,14 +17,15 @@ DEFAULT_PORT="443"
 [ $(id -u) -eq 0 ] || DEFAULT_PORT="8443"
 
 # Make sure we're using a correct port
-[ -v PORT ] || PORT="${DEFAULT_PORT}"
-[[ "${PORT}" =~ ^[1-9][0-9]*$ ]] || PORT="${DEFAULT_PORT}"
-[ ${PORT} -lt 1 ] && PORT="${DEFAULT_PORT}"
-[ ${PORT} -gt 65535 ] && PORT="${DEFAULT_PORT}"
+set_or_default PORT
+is_valid_port "${PORT}" || PORT="${DEFAULT_PORT}"
 
 # If we're not running as root, and we're using a low port,
 # add 10000 to the port so we end up on a high port
 [ $(id -u) -ne 0 ] && [ ${PORT} -lt 1024 ] && (( PORT += 10000 ))
 
-echo -e "Launching the HTTPS server on port ${PORT}..."
-exec /usr/local/bin/httpuploader.py --config "${UPLOADER_CFG}" -p ${PORT} --cert "${SSL_DIR}/cert.pem" --key "${SSL_DIR}/cert.key"
+execute /usr/local/bin/httpuploader.py \
+	--config "${UPLOADER_CFG}" \
+	-p ${PORT} \
+	--cert "${SSL_DIR}/cert.pem" \
+	--key "${SSL_DIR}/cert.key"

@@ -1,25 +1,6 @@
 #!/bin/bash
-SCRIPT="$(/usr/bin/readlink -f "${0}")"
-BASEDIR="$(/usr/bin/dirname "${SCRIPT}")"
-SCRIPT="$(/usr/bin/basename "${SCRIPT}")"
-
 set -euo pipefail
-
-timestamp()
-{
-	/usr/bin/date -Ins -u
-}
-
-say()
-{
-	echo -e "$(timestamp): ${@}"
-}
-
-fail()
-{
-	say "❌ ${@}" 1>&2
-	exit ${EXIT_CODE:-1}
-}
+. /.functions
 
 download()
 {
@@ -31,14 +12,10 @@ download()
 	"${CURL}" --location --fail --disallow-username-in-url --config <(echo -n "${AUTH}") "${DEST[@]}" "${URL}"
 }
 
-decrypt() {
+decrypt()
+{
 	local VALUE="${1}"
-
-	local REQUIRED="${2:-"false"}"
-	case "${REQUIRED,,}" in
-		true ) REQUIRED="true" ;;
-		* ) REQUIRED="false" ;;
-	esac
+	local REQUIRED="$(to_boolean "${2:-"false"}")"
 
 	if "${REQUIRED}" ; then
 		[ -v MVN_GET_ENCRYPTION_KEY ] || fail "No MVN_GET_ENCRYPTION_KEY value is set, cannot continue"
@@ -89,18 +66,16 @@ CLASSIFIER="${BASH_REMATCH[8]}"
 
 [ -n "${VERSION}" ] || VERSION="RELEASE"
 
-XMLSTARLET="$(type -P xmlstarlet)" || fail "xmlstarlet is not installed - cannot proceed"
-XMLLINT="$(type -P xmllint)" || fail "xmllint is not installed - cannot proceed"
-CURL="$(type -P curl)" || fail "curl is not installed - cannot proceed"
+require_exe xmlstarlet xmllint curl
 
 NEED_DECRYPT="true"
 if [ -v MVN_GET_SERVER_ID ] ; then
 	# We have a server ID whose username/password combo we wish to consume
 	[ -n "${MVN_GET_SERVER_ID}" ] || fail "The value in MVN_GET_SERVER_ID may not be the empty string"
-	MVN_CRYPT="$(type -P "${BASEDIR}/mvn-crypt")" || MVN_CRYPT="$(type -P mvn-crypt)" || fail "mvn-crypt is not installed - cannot proceed"
-	MVN_GET_USERNAME="$("${MVN_CRYPT}" --quiet server decrypt "${MVN_GET_SERVER_ID}" username)"
+	require_exe mvn-crypt
+	MVN_GET_USERNAME="$(mvn-crypt --quiet server decrypt "${MVN_GET_SERVER_ID}" username)"
 	[ -n "${MVN_GET_USERNAME}" ] || fail "The username for server [${MVN_GET_SERVER_ID}] is empty or nonexistent"
-	MVN_GET_PASSWORD="$("${MVN_CRYPT}" --quiet server decrypt "${MVN_GET_SERVER_ID}" password)"
+	MVN_GET_PASSWORD="$(mvn-crypt --quiet server decrypt "${MVN_GET_SERVER_ID}" password)"
 	[ -n "${MVN_GET_PASSWORD}" ] || fail "The password for server [${MVN_GET_SERVER_ID}] is empty or nonexistent"
 	NEED_DECRYPT="false"
 fi
@@ -126,7 +101,7 @@ fi
 GROUP_PATH="${GROUP_ID//./\/}"
 BASE="${REPO_URL}/${GROUP_PATH}/${ARTIFACT_ID}"
 
-say "👉 Downloading:"
+doing "Downloading:"
 say "\tArtifact:    [${ARTIFACT}]"
 say "\tRepository:  [${REPO_URL}]"
 say "\tDestination: [${DEST}]"
@@ -199,14 +174,10 @@ else
 	DEST="${PARENT}/$(basename "${DEST}")"
 fi
 
-say "👉 Final Version: [${FINAL_VERSION}]"
-say "👉 Final File:    [${DEST}]"
-say "👉 Final URL:     [${URL}]"
+doing "Final Version: [${FINAL_VERSION}]"
+doing "Final File:    [${DEST}]"
+doing "Final URL:     [${URL}]"
 download "${URL}" "${AUTH}" "${DEST}" || fail "Failed to complete the download"
-say "\t✅ Download successful!"
+ok "Download successful!"
 
-RENDER_HELPERS="$(type -P "${BASEDIR}/render-helpers")" || \
-	RENDER_HELPERS="$(type -P render-helpers)" && \
-	"${RENDER_HELPERS}" "${DEST}" "${FINAL_VERSION}"
-
-exit 0
+execute render-helpers "${DEST}" "${FINAL_VERSION}"

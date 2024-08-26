@@ -1,21 +1,13 @@
 #!/bin/bash
+set -euo pipefail
+. /.functions
 
 # Enable debugging ...
-[ -v DEBUG ] || DEBUG="false"
-case "${DEBUG,,}" in
-	true ) DEBUG="true" ;;
-	* ) DEBUG="false" ;;
-esac
+set_as_boolean DEBUG
 ${DEBUG} && set -x
 
-set -euo pipefail
-
-fail() {
-	echo -e "${@}" 1>&2
-	exit ${EXIT_CODE:-1}
-}
-
-if [ -v CURL_ENCRYPTION_KEY ] && [ -n "${CURL_ENCRYPTION_KEY}" ] ; then
+set_or_default CURL_ENCRYPTION_KEY
+if [ -n "${CURL_ENCRYPTION_KEY}" ] ; then
 	# Decrypt the value
 	exec openssl aes-256-cbc \
 		-a -A -salt -iter 5 -d \

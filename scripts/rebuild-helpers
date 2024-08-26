@@ -1,27 +1,15 @@
 #!/bin/bash
 
 set -euo pipefail
+. /.functions
 
-timestamp() {
-	date -Ins -u
-}
+set_or_default BASE_DIR "/app"
+set_or_default FILE_DIR "${BASE_DIR}/file"
 
-say() {
-	echo -e "$(timestamp): ${@}"
-}
-
-fail() {
-	say "❌ ${@}" 1>&2
-	exit ${EXIT_CODE:-1}
-}
-
-[ -v BASE_DIR ] || BASE_DIR="/app"
-[ -v FILE_DIR ] || FILE_DIR="${BASE_DIR}file"
-
-say "👉 Cleaning out old checksum files..."
+doing "Cleaning out old checksum files..."
 find "${FILE_DIR}" -type f -name '*.sum' -delete
 
-say "👉 Rendering any missing helpers for all contents of [${FILE_DIR}]..."
+doing "Rendering any missing helpers for all contents of [${FILE_DIR}]..."
 COUNT=0
 FAILED=()
 while read FILE ; do
@@ -46,4 +34,4 @@ if [ ${#FAILED[@]} -gt 0 ] ; then
 fi
 S="s"
 [ ${COUNT} -ne 1 ] || S=""
-say "✅ rendered artifact helpers (version + checksum) for ${COUNT} element${S}"
+ok "Rendered artifact helpers (version + checksum) for ${COUNT} element${S}"
