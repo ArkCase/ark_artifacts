@@ -9,7 +9,7 @@ download()
 	local DEST="${3:-""}"
 	[ -n "${AUTH}" ] && AUTH="--user ${AUTH}"
 	[ -n "${DEST}" ] && DEST=(--output "${DEST}")
-	"${CURL}" --location --fail --disallow-username-in-url --config <(echo -n "${AUTH}") "${DEST[@]}" "${URL}"
+	curl --location --fail --disallow-username-in-url --config <(echo -n "${AUTH}") "${DEST[@]}" "${URL}"
 }
 
 decrypt()
@@ -114,8 +114,8 @@ if [ "${VERSION}" == "LATEST" ] || [ "${VERSION}" == "RELEASE" ] ; then
 	[ "${VERSION}" == "RELEASE" ] && SUPPORT_SNAPSHOT="false"
 	say "⚠️ Identifying the ${VERSION} artifact version to download..."
 	XML="$(download "${BASE}/maven-metadata.xml" "${AUTH}" 2>/dev/null)" || fail "Failed to download the artifact metadata for ${GROUP_ID}:${ARTIFACT_ID} from [${BASE}/maven-metadata.xml]"
-	"${XMLLINT}" - <<< "${XML}" &>/dev/null || fail "The artifact metadata for ${GROUP_ID}:${ARTIFACT_ID} downloaded from [${BASE}/maven-metadata.xml] is not valid XML"
-	FINAL_VERSION="$("${XMLSTARLET}" sel -t -v "/metadata/versioning/${VERSION,,}" <<< "${XML}")" || fail "Failed to identify the ${VERSION} version for ${GROUP_ID}:${ARTIFACT_ID} from the XML at [${BASE}/maven-metadata.xml]"
+	xmllint - <<< "${XML}" &>/dev/null || fail "The artifact metadata for ${GROUP_ID}:${ARTIFACT_ID} downloaded from [${BASE}/maven-metadata.xml] is not valid XML"
+	FINAL_VERSION="$(xmlstarlet sel -t -v "/metadata/versioning/${VERSION,,}" <<< "${XML}")" || fail "Failed to identify the ${VERSION} version for ${GROUP_ID}:${ARTIFACT_ID} from the XML at [${BASE}/maven-metadata.xml]"
 	say "\t✅ The ${VERSION} version is ${FINAL_VERSION}"
 	VERSION="${FINAL_VERSION}"
 fi
@@ -125,9 +125,9 @@ BASE+="/${VERSION}"
 if "${SUPPORT_SNAPSHOT}" && [[ "${VERSION^^}" =~ (^|[^a-zA-Z0-9])SNAPSHOT$ ]] ; then
 	say "⚠️ This version is a SNAPSHOT - identifying the final artifact to download"
 	XML="$(download "${BASE}/maven-metadata.xml" "${AUTH}" 2>/dev/null)" || fail "Failed to download the artifact metadata for ${GROUP_ID}:${ARTIFACT_ID}:${VERSION} from [${BASE}/maven-metadata.xml]"
-	"${XMLLINT}" - <<< "${XML}" &>/dev/null || fail "The artifact metadata for ${GROUP_ID}:${ARTIFACT_ID}:${VERSION} downloaded from [${BASE}/maven-metadata.xml] is not valid XML"
-	TIMESTAMP="$("${XMLSTARLET}" sel -t -v '/metadata/versioning/snapshot/timestamp' <<< "${XML}")" || fail "No timestamp data is present for the required snapshot version, cannot continue"
-	BUILD_NUMBER="$("${XMLSTARLET}" sel -t -v '/metadata/versioning/snapshot/buildNumber' <<< "${XML}")" || fail "No build number data is present for the required snapshot version, cannot continue"
+	xmllint - <<< "${XML}" &>/dev/null || fail "The artifact metadata for ${GROUP_ID}:${ARTIFACT_ID}:${VERSION} downloaded from [${BASE}/maven-metadata.xml] is not valid XML"
+	TIMESTAMP="$(xmlstarlet sel -t -v '/metadata/versioning/snapshot/timestamp' <<< "${XML}")" || fail "No timestamp data is present for the required snapshot version, cannot continue"
+	BUILD_NUMBER="$(xmlstarlet sel -t -v '/metadata/versioning/snapshot/buildNumber' <<< "${XML}")" || fail "No build number data is present for the required snapshot version, cannot continue"
 	FINAL_VERSION="$(echo -n "${VERSION}" | /usr/bin/sed -e "s/\(\b\)SNAPSHOT\(\b\)/\1${TIMESTAMP}-${BUILD_NUMBER}\2/gi")"
 	say "\t✅ The latest SNAPSHOT version is ${FINAL_VERSION}"
 fi
@@ -137,8 +137,8 @@ TAB=""
 if [ -z "${EXTENSION}" ] ; then
 	say "⚠️ Packaging (type) not provided, must identify it from the POM"
 	POM="$(download "${BASE}.pom" "${AUTH}" 2>/dev/null)" || fail "Failed to download the artifact POM for ${GROUP_ID}:${ARTIFACT_ID}:${VERSION} from [${BASE}.pom]"
-	"${XMLLINT}" - <<< "${POM}" &>/dev/null || fail "The artifact POM for ${GROUP_ID}:${ARTIFACT_ID}:${VERSION} downloaded from [${BASE}.pom] is not valid XML"
-	EXTENSION="$("${XMLSTARLET}" sel -N "p=http://maven.apache.org/POM/4.0.0" -t -v '/p:project/p:packaging' <<< "${POM}")" || true
+	xmllint - <<< "${POM}" &>/dev/null || fail "The artifact POM for ${GROUP_ID}:${ARTIFACT_ID}:${VERSION} downloaded from [${BASE}.pom] is not valid XML"
+	EXTENSION="$(xmlstarlet sel -N "p=http://maven.apache.org/POM/4.0.0" -t -v '/p:project/p:packaging' <<< "${POM}")" || true
 	[ -z "${EXTENSION}" ] && EXTENSION="jar"
 	TAB="\t"
 fi
