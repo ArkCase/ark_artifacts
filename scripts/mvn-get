@@ -179,5 +179,5 @@ doing "Final File:    [${DEST}]"
 doing "Final URL:     [${URL}]"
 download "${URL}" "${AUTH}" "${DEST}" || fail "Failed to complete the download"
 ok "Download successful!"
-
+type -P render-helpers &>/dev/null || exit 0
 execute render-helpers "${DEST}" "${FINAL_VERSION}"
