@@ -660,6 +660,21 @@ class WSGIApp:
         # return FileWrapper(pfile.open("rb"))
         return [content]
 
+    def send_global_sums(self):
+        try:
+            content = os.environ["GLOBAL_SUMS"]
+        except KeyError:
+            content = "{}"
+
+        headers = [
+            ("Content-length", str(len(content))),
+            ("Content-type", "application/json"),
+            ("Content-encoding", "UTF-8"),
+        ]
+
+        self.start_response("200 OK", headers)
+        return [content.encode()]
+
     def __call__(self, env, start_response):
         self.env = env
         self.start_response = start_response
@@ -674,7 +689,9 @@ class WSGIApp:
             return self.send_static("app.css")
         if request == "/app.js":
             return self.send_static("app.js")
-            
+        if request == "/global-sums":
+            return self.send_global_sums()
+
         try:
             apiversion, resource, querydict = self.parse_request(request, querystring)
         except HTUPLError as err:
