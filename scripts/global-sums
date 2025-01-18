@@ -1,0 +1,22 @@
+#!/bin/bash
+
+set -euo pipefail
+. /.functions
+
+#
+# Generate the GLOBAL_SUMS value
+#
+GLOBAL_SUMS=""
+while read CATEGORY ; do
+	SUMS=()
+	while read ARTIFACT ; do
+		[ -f "${ARTIFACT}.sum" ] || fail "No checksum computed for [${ARTIFACT}] ... initialization failed"
+		SUMS+=( "${ARTIFACT}.sum" )
+	done < <(find "${CATEGORY}" -type f -not -name '*.sum' -not -name '*.ver' | sort)
+	if [ ${#SUMS[@]} -gt 0 ] ; then
+		read SUM REST < <(sha256sum "${SUMS[@]}")
+		[ -n "${GLOBAL_SUMS}" ] && GLOBAL_SUMS+=", "
+		GLOBAL_SUMS+="\"${CATEGORY##*/}\": \"${SUM}\""
+	fi
+done < <(find "${FILE_DIR}" -mindepth 1 -maxdepth 1 -type d | sort)
+exec jq -r <<< "{${GLOBAL_SUMS}}"

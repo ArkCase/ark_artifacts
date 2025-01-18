@@ -24,25 +24,6 @@ is_valid_port "${PORT}" || PORT="${DEFAULT_PORT}"
 # add 10000 to the port so we end up on a high port
 [ $(id -u) -ne 0 ] && [ ${PORT} -lt 1024 ] && (( PORT += 10000 ))
 
-#
-# Generate the GLOBAL_SUMS value
-#
-GLOBAL_SUMS=""
-while read CATEGORY ; do
-	SUMS=()
-	while read ARTIFACT ; do
-		[ -f "${ARTIFACT}.sum" ] || fail "No checksum computed for [${ARTIFACT}] ... initialization failed"
-		SUMS+=( "${ARTIFACT}.sum" )
-	done < <(find "${CATEGORY}" -type f -not -name '*.sum' -not -name '*.ver' | sort)
-	if [ ${#SUMS[@]} -gt 0 ] ; then
-		read SUM REST < <(sha256sum "${SUMS[@]}")
-		[ -n "${GLOBAL_SUMS}" ] && GLOBAL_SUMS+=", "
-		GLOBAL_SUMS+="\"${CATEGORY##*/}\": \"${SUM}\""
-	fi
-done < <(find "${FILE_DIR}" -mindepth 1 -maxdepth 1 -type d | sort)
-
-export GLOBAL_SUMS="{${GLOBAL_SUMS}}"
-
 execute /usr/local/bin/httpuploader.py \
 	--config "${UPLOADER_CFG}" \
 	-p ${PORT} \

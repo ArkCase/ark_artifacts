@@ -11,6 +11,7 @@ import pathlib
 import shutil
 import ssl
 import stat
+import subprocess
 import sys
 import tarfile
 import traceback
@@ -662,9 +663,10 @@ class WSGIApp:
 
     def send_global_sums(self):
         try:
-            content = os.environ["GLOBAL_SUMS"]
-        except KeyError:
-            content = "{}"
+            result = subprocess.run(["/usr/local/bin/global-sums"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            content = result.stdout
+        except:
+            content = "{}".encode()
 
         headers = [
             ("Content-length", str(len(content))),
@@ -673,7 +675,7 @@ class WSGIApp:
         ]
 
         self.start_response("200 OK", headers)
-        return [content.encode()]
+        return [content]
 
     def __call__(self, env, start_response):
         self.env = env
