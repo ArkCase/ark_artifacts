@@ -14,7 +14,7 @@ while read CATEGORY ; do
 		SUMS+=( "${ARTIFACT}.sum" )
 	done < <(find "${CATEGORY}" -type f -not -name '*.sum' -not -name '*.ver' | sort)
 	if [ ${#SUMS[@]} -gt 0 ] ; then
-		read SUM REST < <(sha256sum "${SUMS[@]}")
+		read SUM REST < <(cat "${SUMS[@]}" | sha256sum)
 		[ -n "${GLOBAL_SUMS}" ] && GLOBAL_SUMS+=", "
 		GLOBAL_SUMS+="\"${CATEGORY##*/}\": \"${SUM}\""
 	fi
