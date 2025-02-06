@@ -3,6 +3,17 @@
 set -euo pipefail
 . /.functions
 
+get_category_sums()
+{
+	local CATEGORY="${1}"
+	shift
+
+	echo "Category: ${CATEGORY}"
+	for SUM in "${@}" ; do
+		echo -e "$(<"${SUM}")\t${SUM%.*}"
+	done
+}
+
 #
 # Generate the GLOBAL_SUMS value
 #
@@ -14,7 +25,7 @@ while read CATEGORY ; do
 		SUMS+=( "${ARTIFACT}.sum" )
 	done < <(find "${CATEGORY}" -type f -not -name '*.sum' -not -name '*.ver' | sort)
 	if [ ${#SUMS[@]} -gt 0 ] ; then
-		read SUM REST < <(cat "${SUMS[@]}" | sha256sum)
+		read SUM REST < <(get_category_sums "${CATEGORY}" "${SUMS[@]}" | sha256sum)
 		[ -n "${GLOBAL_SUMS}" ] && GLOBAL_SUMS+=", "
 		GLOBAL_SUMS+="\"${CATEGORY##*/}\": \"${SUM}\""
 	fi
