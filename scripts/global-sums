@@ -3,6 +3,11 @@
 set -euo pipefail
 . /.functions
 
+set_or_default BASE_DIR "/app"
+set_or_default FILE_DIR "${BASE_DIR}/file"
+set_or_default RENDER_LOCK "/.render-lock"
+set_or_default LOCK_TIMEOUT "5m"
+
 get_category_sums()
 {
 	local CATEGORY="${1}"
@@ -14,20 +19,46 @@ get_category_sums()
 	done
 }
 
-#
-# Generate the GLOBAL_SUMS value
-#
-GLOBAL_SUMS=""
-while read CATEGORY ; do
-	SUMS=()
-	while read ARTIFACT ; do
-		[ -f "${ARTIFACT}.sum" ] || fail "No checksum computed for [${ARTIFACT}] ... initialization failed"
-		SUMS+=( "${ARTIFACT}.sum" )
-	done < <(find "${CATEGORY}" -type f -not -name '*.sum' -not -name '*.ver' | sort)
-	if [ ${#SUMS[@]} -gt 0 ] ; then
-		read SUM REST < <(get_category_sums "${CATEGORY}" "${SUMS[@]}" | sha256sum)
-		[ -n "${GLOBAL_SUMS}" ] && GLOBAL_SUMS+=", "
-		GLOBAL_SUMS+="\"${CATEGORY##*/}\": \"${SUM}\""
-	fi
-done < <(find "${FILE_DIR}" -mindepth 1 -maxdepth 1 -type d | sort)
-exec jq -r <<< "{${GLOBAL_SUMS}}"
+LOCK_TIMEOUT_SECS="$(timestr_to_secs "${LOCK_TIMEOUT}")" || fail "Invalid syntax for the lock timeout [${LOCK_TIMEOUT}]"
+
+FIRST="true"
+START="$(date +%s)"
+while true ; do
+	is_file "${RENDER_LOCK}" && break
+	as_boolean "${FIRST}" && sleeping "Waiting for the rendering lock to appear"
+	FIRST="false"
+	sleep 1 || fail "Sleep interrupted!"
+	NOW="$(date +%s)"
+	[ $(( NOW - START )) -ge ${LOCK_TIMEOUT_SECS} ] && break
+done
+is_file "${RENDER_LOCK}" || fail "The rendering lock was not created in time"
+
+eyes "Rendering lock ready!"
+
+{
+	flock --shared --wait ${LOCK_TIMEOUT_SECS} 999 || fail "Failed to acquire a read lock on the rendering lock"
+
+	ACTUAL="$(<"${RENDER_LOCK}")"
+	read EXPECTED REST < <(find "${FILE_DIR}" -mindepth 2 -type f -name '*.sum' | sort | xargs cat | sha256sum)
+
+	[ "${EXPECTED}" == "${ACTUAL}" ] || fail "Render Lock Data mismatch: expected [${EXPECTED}] but got [${ACTUAL}]"
+
+	#
+	# Generate the GLOBAL_SUMS value
+	#
+	GLOBAL_SUMS=""
+	while read CATEGORY ; do
+		SUMS=()
+		while read ARTIFACT ; do
+			[ -f "${ARTIFACT}.sum" ] || fail "No checksum computed for [${ARTIFACT}] ... initialization failed"
+			SUMS+=( "${ARTIFACT}.sum" )
+		done < <(find "${CATEGORY}" -type f -not -name '*.sum' -not -name '*.ver' | sort)
+		if [ ${#SUMS[@]} -gt 0 ] ; then
+			read SUM REST < <(get_category_sums "${CATEGORY}" "${SUMS[@]}" | sha256sum)
+			[ -n "${GLOBAL_SUMS}" ] && GLOBAL_SUMS+=", "
+			GLOBAL_SUMS+="\"${CATEGORY##*/}\": \"${SUM}\""
+		fi
+	done < <(find "${FILE_DIR}" -mindepth 1 -maxdepth 1 -type d | sort)
+	exec jq -r <<< "{${GLOBAL_SUMS}}"
+
+} 999<"${RENDER_LOCK}"

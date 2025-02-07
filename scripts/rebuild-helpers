@@ -5,33 +5,43 @@ set -euo pipefail
 
 set_or_default BASE_DIR "/app"
 set_or_default FILE_DIR "${BASE_DIR}/file"
+set_or_default RENDER_LOCK "/.render-lock"
 
-doing "Cleaning out old checksum files..."
-find "${FILE_DIR}" -type f -name '*.sum' -delete
+:> "${RENDER_LOCK}" || fail "Failed to create the rendering lock"
+{
+	flock --exclusive --nonblock 999 || fail "The rendering lock is currently being held, cannot continue"
 
-doing "Rendering any missing helpers for all contents of [${FILE_DIR}]..."
-COUNT=0
-FAILED=()
-while read FILE ; do
-	say "\t👉 Processing [${FILE}]..."
-	VER=""
-	[ -s "${FILE}.ver" ] && VER="$(<"${FILE}.ver")"
-	if render-helpers "${FILE}" "${VER}" ; then
-		(( ++COUNT ))
-	else
-		FAILED+=("${FILE}")
-	fi |& sed -e 's;^;\t\t;g'
-done < <(find "${FILE_DIR}" -type f -not -name '*.sum' -not -name '*.ver' | sort)
+	doing "Cleaning out old checksum files..."
+	find "${FILE_DIR}" -type f -name '*.sum' -delete
 
-if [ ${#FAILED[@]} -gt 0 ] ; then
+	doing "Rendering any missing helpers for all contents of [${FILE_DIR}]..."
+	COUNT=0
+	FAILED=()
+	while read FILE ; do
+		say "\t👉 Processing [${FILE}]..."
+		VER=""
+		[ -s "${FILE}.ver" ] && VER="$(<"${FILE}.ver")"
+		if render-helpers "${FILE}" "${VER}" ; then
+			(( ++COUNT ))
+		else
+			FAILED+=("${FILE}")
+		fi |& sed -e 's;^;\t\t;g'
+	done < <(find "${FILE_DIR}" -mindepth 2 -type f -not -name '*.sum' -not -name '*.ver' | sort)
+
+	if [ ${#FAILED[@]} -gt 0 ] ; then
+		S="s"
+		[ ${#FAILED[@]} -ne 1 ] || S=""
+		say "Rendering failed for the following ${#FAILED[@]} file${S}:"
+		for FILE in "${FAILED[@]}" ; do
+			say "\t${FILE}"
+		done
+		fail "Rebuilding helpers failed"
+	fi
 	S="s"
-	[ ${#FAILED[@]} -ne 1 ] || S=""
-	say "Rendering failed for the following ${#FAILED[@]} file${S}:"
-	for FILE in "${FAILED[@]}" ; do
-		say "\t${FILE}"
-	done
-	fail "Rebuilding helpers failed"
-fi
-S="s"
-[ ${COUNT} -ne 1 ] || S=""
-ok "Rendered artifact helpers (version + checksum) for ${COUNT} element${S}"
+	[ ${COUNT} -ne 1 ] || S=""
+	ok "Rendered artifact helpers (version + checksum) for ${COUNT} element${S}"
+
+	# This just allows the other ones to verify that the lock is, indeed, complete
+	read LOCK_DATA REST < <(find "${FILE_DIR}" -mindepth 2 -type f -name '*.sum' | sort | xargs cat | sha256sum)
+	echo -n "${LOCK_DATA}" > "${RENDER_LOCK}"
+} 999<"${RENDER_LOCK}"
