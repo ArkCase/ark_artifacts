@@ -12,7 +12,7 @@
 ARG PUBLIC_REGISTRY="public.ecr.aws"
 ARG ARCH="amd64"
 ARG OS="linux"
-ARG VER="1.6.2"
+ARG VER="1.6.3"
 
 ARG BASE_REGISTRY="${PUBLIC_REGISTRY}"
 ARG BASE_REPO="arkcase/base"
@@ -89,6 +89,7 @@ ENV UPLOADER_CFG="${UPLOADER_CFG}"
 COPY --chown=root:root "httpuploader.ini" "${UPLOADER_CFG}"
 COPY --chown=root:root scripts/ /usr/local/bin
 RUN chmod a+rx /usr/local/bin/* && chmod a=r "${UPLOADER_CFG}"
+ENV RENDER_LOCK="${FILE_DIR}/.render-lock"
 
 ENV ARKCASE_DIR="${FILE_DIR}/arkcase"
 ENV ARKCASE_CONF_DIR="${ARKCASE_DIR}/conf"
