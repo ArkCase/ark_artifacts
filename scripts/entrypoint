@@ -4,14 +4,14 @@ set -euo pipefail
 . /.functions
 
 #
-# Update the SSL configurations
-#
-init_ssl
-
-#
 # Make sure all helper files are up-to-date
 #
 rebuild-helpers
+
+#
+# Update the SSL configurations
+#
+init_ssl
 
 DEFAULT_PORT="443"
 [ $(id -u) -eq 0 ] || DEFAULT_PORT="8443"
