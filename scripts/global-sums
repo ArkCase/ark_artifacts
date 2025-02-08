@@ -8,6 +8,12 @@ set_or_default FILE_DIR "${BASE_DIR}/file"
 set_or_default RENDER_LOCK "/.render-lock"
 set_or_default LOCK_TIMEOUT "5m"
 
+# Our STDOUT must be just the JSON, so we use STDERR for everything else
+say()
+{
+	echo -e "${@}" 1>&2
+}
+
 get_category_sums()
 {
 	local CATEGORY="${1}"
