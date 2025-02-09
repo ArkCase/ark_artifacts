@@ -42,6 +42,6 @@ set_or_default RENDER_LOCK "/.render-lock"
 	ok "Rendered artifact helpers (version + checksum) for ${COUNT} element${S}"
 
 	# This just allows the other ones to verify that the lock is, indeed, complete
-	read LOCK_DATA REST < <(find "${FILE_DIR}" -mindepth 2 -type f -name '*.sum' | sort | xargs cat | sha256sum)
+	read LOCK_DATA REST < <(find "${FILE_DIR}" -mindepth 2 -type f -name '*.sum' | sort | xargs -d '\n' cat | sha256sum)
 	echo -n "${LOCK_DATA}" > "${RENDER_LOCK}"
 } 999<"${RENDER_LOCK}"

@@ -36,7 +36,7 @@ is_file "${RENDER_LOCK}" || fail "The rendering lock was not created in time"
 	flock --shared --wait ${LOCK_TIMEOUT_SECS} 999 || fail "Failed to acquire a read lock on the rendering lock"
 
 	ACTUAL="$(<"${RENDER_LOCK}")"
-	read EXPECTED REST < <(find "${FILE_DIR}" -mindepth 2 -type f -name '*.sum' | sort | xargs cat | sha256sum)
+	read EXPECTED REST < <(find "${FILE_DIR}" -mindepth 2 -type f -name '*.sum' | sort | xargs -d '\n' cat | sha256sum)
 
 	[ "${EXPECTED}" == "${ACTUAL}" ] || fail "Render Lock Data mismatch: expected [${EXPECTED}] but got [${ACTUAL}]"
 
