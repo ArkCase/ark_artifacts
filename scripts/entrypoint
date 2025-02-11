@@ -24,8 +24,23 @@ is_valid_port "${PORT}" || PORT="${DEFAULT_PORT}"
 # add 10000 to the port so we end up on a high port
 [ $(id -u) -ne 0 ] && [ ${PORT} -lt 1024 ] && (( PORT += 10000 ))
 
+export HTTPD_PORT="${PORT}"
+export HTTPD_CERT="${SSL_DIR}/cert.pem"
+export HTTPD_PKEY="${SSL_DIR}/cert.key"
+export HTTPD_ROOT="${FILE_DIR}"
+
+set_or_default NEW_HTTPD
+
+set_or_default HTTPD_EXE "/usr/local/bin/artifacts-httpd"
+
+if as_boolean "${NEW_HTTPD}" && is_file_executable "${HTTPD_EXE}" ; then
+	eyes "Launching the GoLang HTTPD server"
+	execute "${HTTPD_EXE}"
+fi
+
+eyes "Launching the Python HTTPD server"
 execute /usr/local/bin/httpuploader.py \
 	--config "${UPLOADER_CFG}" \
-	-p ${PORT} \
-	--cert "${SSL_DIR}/cert.pem" \
-	--key "${SSL_DIR}/cert.key"
+	-p "${HTTPD_PORT}" \
+	--cert "${HTTPD_CERT}" \
+	--key "${HTTPD_KEY}"
