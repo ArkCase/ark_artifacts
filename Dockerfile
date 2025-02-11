@@ -14,11 +14,33 @@ ARG ARCH="amd64"
 ARG OS="linux"
 ARG VER="1.6.4"
 
+ARG HTTPD_VER="1.0.0"
+ARG HTTPD_SRC="https://github.com/ArkCase/artifacts-httpd.git"
+
 ARG BASE_REGISTRY="${PUBLIC_REGISTRY}"
 ARG BASE_REPO="arkcase/base"
 ARG BASE_VER="8"
 ARG BASE_VER_PFX=""
 ARG BASE_IMG="${BASE_REGISTRY}/${BASE_REPO}:${BASE_VER_PFX}${BASE_VER}"
+
+ARG BUILDER_IMAGE="golang"
+ARG BUILDER_VER="1.23-alpine3.21"
+ARG BUILDER_IMG="${BUILDER_IMAGE}:${BUILDER_VER}"
+
+FROM "${BUILDER_IMG}" AS builder
+
+ARG HTTPD_VER
+ARG HTTPD_SRC
+ARG HTTPD_SRCPATH="/build/artifacts-httpd"
+
+RUN apk --no-cache add git
+RUN mkdir -p "${HTTPD_SRCPATH}" && \
+    git clone "${HTTPD_SRC}" "${HTTPD_SRCPATH}" && \
+    cd "${HTTPD_SRCPATH}" && \
+    git checkout "${HTTPD_VER}" && \
+    GO111MODULE=on \
+    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -a -ldflags "-X 'main.AppVersion=v${HTTPD_VER}' -extldflags '-static'" -o /artifacts-httpd
 
 FROM "${BASE_IMG}"
 
@@ -86,6 +108,7 @@ RUN yum -y install \
 #
 ARG UPLOADER_CFG="/app/httpuploader.ini"
 ENV UPLOADER_CFG="${UPLOADER_CFG}"
+COPY --chown=root:root --from=builder /artifacts-httpd /usr/local/bin
 COPY --chown=root:root "httpuploader.ini" "${UPLOADER_CFG}"
 COPY --chown=root:root scripts/ /usr/local/bin
 RUN chmod a+rx /usr/local/bin/* && chmod a=r "${UPLOADER_CFG}"
