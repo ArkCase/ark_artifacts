@@ -268,7 +268,6 @@ func HandleRequest(rsp http.ResponseWriter, req *http.Request) {
 		}
 
 		if response.fileData != nil {
-			log.Printf("Output binary file data")
 			data = response.fileData
 		} else {
 			data, err = json.Marshal(response)
