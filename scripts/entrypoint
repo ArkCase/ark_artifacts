@@ -43,4 +43,4 @@ execute /usr/local/bin/httpuploader.py \
 	--config "${UPLOADER_CFG}" \
 	-p "${HTTPD_PORT}" \
 	--cert "${HTTPD_CERT}" \
-	--key "${HTTPD_KEY}"
+	--key "${HTTPD_PKEY}"
