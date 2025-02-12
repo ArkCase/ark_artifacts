@@ -29,11 +29,9 @@ export HTTPD_CERT="${SSL_DIR}/cert.pem"
 export HTTPD_PKEY="${SSL_DIR}/cert.key"
 export HTTPD_ROOT="${FILE_DIR}"
 
-set_or_default NEW_HTTPD
-
 set_or_default HTTPD_EXE "/usr/local/bin/artifacts-httpd"
 
-if as_boolean "${NEW_HTTPD}" && is_file_executable "${HTTPD_EXE}" ; then
+if is_file_executable "${HTTPD_EXE}" ; then
 	eyes "Launching the GoLang HTTPD server"
 	execute "${HTTPD_EXE}"
 fi
