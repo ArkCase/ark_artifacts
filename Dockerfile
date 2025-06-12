@@ -98,12 +98,9 @@ RUN yum -y install \
 #
 # Add the script that allows us to add files
 #
-ARG UPLOADER_CFG="/app/httpuploader.ini"
-ENV UPLOADER_CFG="${UPLOADER_CFG}"
 COPY --chown=root:root --from=builder /artifacts-httpd /usr/local/bin
-COPY --chown=root:root "httpuploader.ini" "${UPLOADER_CFG}"
 COPY --chown=root:root scripts/ /usr/local/bin
-RUN chmod a+rx /usr/local/bin/* && chmod a=r "${UPLOADER_CFG}"
+RUN chmod a+rx /usr/local/bin/*
 ENV RENDER_LOCK="${FILE_DIR}/.render-lock"
 
 ENV ARKCASE_DIR="${FILE_DIR}/arkcase"
