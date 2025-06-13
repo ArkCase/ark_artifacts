@@ -35,6 +35,14 @@ KEY_TYPE = "type"
 KEY_CLASSIFIER = "classifier"
 KEY_URL = "url"
 
+ENV_PREFIX_MAVEN = "MVN_GET"
+ENV_PREFIX_DIRECT = "CURL"
+ENV_ENCRYPTION_KEY = "%s_ENCRYPTION_KEY"
+ENV_USERNAME = "%s_USERNAME"
+ENV_PASSWORD = "%s_PASSWORD"
+
+ENV_MAVEN_SERVER_ID = f"{ENV_PREFIX_MAVEN}_SERVER_ID"
+
 def log_ok(msg):
 	logging.info(f"✅ {msg}")
 
@@ -149,9 +157,9 @@ def parse_credentials_item(name, item):
 
 	# There must be a username and a password
 	username = item.get(KEY_USERNAME)
-	passwordVar = item.get(KEY_PASSWORD_VAR)
+	password_var = item.get(KEY_PASSWORD_VAR)
 
-	if (not username) or (not passwordVar):
+	if (not username) or (not password_var):
 		fail(f"The credentials [{name}] must have non-empty values for '{KEY_USERNAME}' and '{KEY_PASSWORD_VAR}'")
 
 	# This string may be static, or may include ${VAR}
@@ -163,14 +171,14 @@ def parse_credentials_item(name, item):
 	# This is the name of the environment variable
 	# that contains the password value. It must exist
 	# at this point
-	passwordVar = str(passwordVar)
-	if not passwordVar:
+	password_var = str(password_var)
+	if not password_var:
 		fail(f"The {KEY_PASSWORD_VAR} from the credentials [{name}] is an empty string - this is not allowed")
 
-	template = f"${{{passwordVar}}}"
+	template = f"${{{password_var}}}"
 	password = resolve_vars(template)
 	if (not password) or (password == template):
-		fail(f"The {KEY_PASSWORD_VAR} from the credentials [{name}] (with value '{passwordVar}') did not resolve to an actual password - this is not allowed")
+		fail(f"The {KEY_PASSWORD_VAR} from the credentials [{name}] (with value '{password_var}') did not resolve to an actual password - this is not allowed")
 
 	return { KEY_USERNAME : username, KEY_PASSWORD : password }
 
@@ -271,6 +279,7 @@ def encrypt_decrypt_value(key, value, encrypt = True):
 	mode = "-e"
 	if not encrypt:
 		mode = "-d"
+	# This mirrors what the mvn-get and prep-artifact use for crypto
 	cmd = [ "openssl", "aes-256-cbc", "-a", "-A", "-salt", "-iter", "5", mode, "-k", key ]
 	result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, input=value.encode())
 	if result.returncode != 0:
@@ -283,9 +292,48 @@ def encrypt_value(key, value):
 def decrypt_value(key, value):
 	return encrypt_decrypt_value(key, value, False)
 
+def add_creds_environment(environment, credentials, prefix):
+	encryption_key = generate_encryption_key()
+	environment[ENV_ENCRYPTION_KEY % prefix] = encryption_key
+	environment[ENV_USERNAME % prefix] = encrypt_value(encryption_key, credentials[KEY_USERNAME])
+	environment[ENV_PASSWORD % prefix] = encrypt_value(encryption_key, credentials[KEY_PASSWORD])
+	return environment
+
+def add_maven_environment(environment, source):
+	try:
+		repo_name = source[KEY_REPOSITORY]
+		credentials = get_maven_creds(repo_name)
+		if not credentials:
+			environment[ENV_MAVEN_SERVER_ID] = source[KEY_REPOSITORY]
+			return environment
+		return add_creds_environment(environment, credentials, ENV_PREFIX_MAVEN)
+	except KeyError:
+		# No credentials were given, so we don't care
+		return environment
+
+def add_direct_environment(environment, source):
+	try:
+		credentials_name = source[KEY_CREDENTIALS]
+		credentials = get_direct_creds(credentials_name)
+		if not credentials:
+			raise Exception(f"Non-existent credentials '{credentials_name}' referenced from a direct artifact")
+		return add_creds_environment(environment, credentials, ENV_PREFIX_DIRECT)
+	except KeyError:
+		# No credentials were given, so we don't care
+		return environment
+
+def add_environment(environment, source):
+	if KEY_MAVEN == source[KEY_DOWNLOAD]:
+		return add_maven_environment(environment, source)
+	if KEY_DIRECT == source[KEY_DOWNLOAD]:
+		return add_direct_environment(environment, source)
+	return environment
+
 def launch_process(src, tgt, log):
 	# Inherit the environment
-	environment = os.environ.copy()
+	# environment = add_environment(os.environ.copy(), src)
+	environment = add_environment({}, src)
+	raise Exception(f"KABOOM: {environment}")
 
 	# TODO: Set the credentials envvars and whatnot
 	# TODO: Select which script to run
@@ -298,30 +346,25 @@ def run_download(spec):
 	log = None
 	log_path = None
 
-	if spec.path:
-		return True
-
 	source = spec.source
 	try:
 		log_fd, log_path = tempfile.mkstemp(prefix=f"artifact-download.{spec.product}-{spec.category}-{spec.artifact}.", suffix=".tmp")
-		log = os.fdopen(log_fd)
+		with os.fdopen(log_fd) as log:
+			result = launch_process(spec.source, spec.path, log)
 
-		# Returns a CompletedProcess instance
-		result = launch_process(spec.source, spec.path, log)
+		if result.returncode == 0:
+			log_ok(f"The artifact {spec.path} was retrieved successfully!")
+			return True
 
-		if source[KEY_DOWNLOAD] == KEY_DIRECT:
-			# It's a direct download - need to run teh render-helpers script!
-			pass
-
-		# Wait for the process to end ...
+		with open(log_path, "r") as log:
+			log_err(f"The retrieval for the artifact {spec.path} failed (rc={result.returncode}):\n{log.read()}")
+			return False
 	except Exception as e:
-		log_err(f"POpen() call failed when downlading the artifact {spec.path}: {e}")
-		# Clean up!!
-		if log:
-			log.close()
+		log_err(f"Failed to launch the process to download the artifact {spec.path}: {e}")
+		return False
+	finally:
 		if log_path:
 			os.remove(log_path)
-		return False
 
 def parse_and_resolve_values(item, required, supported):
 	result = {}
