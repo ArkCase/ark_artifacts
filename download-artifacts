@@ -41,6 +41,8 @@ ENV_ENCRYPTION_KEY = "%s_ENCRYPTION_KEY"
 ENV_USERNAME = "%s_USERNAME"
 ENV_PASSWORD = "%s_PASSWORD"
 
+ENV_FILE_DIR = "FILE_DIR"
+
 ENV_MAVEN_SERVER_ID = f"{ENV_PREFIX_MAVEN}_SERVER_ID"
 
 def log_ok(msg):
@@ -74,7 +76,7 @@ elif len(sys.argv) > 2:
 	print(f"usage: {sys.argv[0]} configuration-file")
 	print("")
 	print(f"\tThe configuration file may be a file on the filesystem, or '-' for STDIN")
-	sys.exit(1)
+	os._exit(1)
 
 if source_file == "-":
 	source_file = sys.stdin
@@ -204,16 +206,22 @@ def parse_maven_credentials_item(credentials, name, item):
 	if (type(item) != dict):
 		fail(f"Bad configuration format: the '{KEY_AUTHENTICATION}.{KEY_MAVEN}.{name}' element must be a map")
 
-	credName = item.get(KEY_CREDENTIALS)
+	credentials_name = item.get(KEY_CREDENTIALS)
 	url = item.get(KEY_URL)
 
-	if (not url) or (not credName):
-		fail(f"The Maven credentials [{name}] must have non-empty values for '{KEY_URL}' and '{KEY_CREDENTIALS}'")
+	if (not url):
+		fail(f"The Maven credentials [{name}] must have non-empty values for '{KEY_URL}'")
 
-	# Make sure the named credentials exist
-	if credName not in credentials:
-		fail(f"The Maven credentials [{name}] reference the non-existant credentials named [{credName}] - must be one of {sorted(credentials.keys())}")
-	
+	if credentials_name:
+		# Make sure the named credentials exist
+		if credentials_name in credentials:
+			result = copy.copy(credentials[credentials_name])
+		else:
+			log_warn(f"The Maven credentials [{name}] are not defined in the configuration file - assuming it's a server ID for internal Maven authentication")
+			result = { KEY_REPOSITORY : credentials_name }
+	else:
+		result = {}
+
 	# This string may be static, or may include ${VAR}
 	# interpolations with environment variables
 	url = resolve_vars(str(url))
@@ -224,7 +232,6 @@ def parse_maven_credentials_item(credentials, name, item):
 	if not validate_url(url):
 		fail(f"The {KEY_URL} from the Maven credentials [{name}] evaluated to the invalid URL [{url}]")
 
-	result = copy.copy(credentials[credName])
 	result[KEY_URL] = url
 	return result
 
@@ -299,48 +306,94 @@ def add_creds_environment(environment, credentials, prefix):
 	environment[ENV_PASSWORD % prefix] = encrypt_value(encryption_key, credentials[KEY_PASSWORD])
 	return environment
 
-def add_maven_environment(environment, source):
-	try:
-		repo_name = source[KEY_REPOSITORY]
-		credentials = get_maven_creds(repo_name)
-		if not credentials:
-			environment[ENV_MAVEN_SERVER_ID] = source[KEY_REPOSITORY]
-			return environment
-		return add_creds_environment(environment, credentials, ENV_PREFIX_MAVEN)
-	except KeyError:
-		# No credentials were given, so we don't care
-		return environment
+def resolve_target(target):
+	full_target = os.environ.get(ENV_FILE_DIR)
+	if not full_target:
+		full_target = ""
+	else:
+		full_target += "/"
+	full_target += target
+	return full_target
 
-def add_direct_environment(environment, source):
+def compute_maven_artifact(source):
+	artifact = f"{source[KEY_GROUP]}:{source[KEY_ARTIFACT]}"
+	version = ""
+	type = ""
+	classifier = ""
+
+	if KEY_CLASSIFIER in source:
+		classifier = f":{source[KEY_CLASSIFIER]}"
+
+	if KEY_TYPE in source:
+		type = f":{source[KEY_TYPE]}"
+	elif classifier:
+		type = ":"
+
+	if KEY_VERSION in source:
+		version = f":{source[KEY_VERSION]}"
+	elif type:
+		version = ":"
+
+	return artifact + version + type + classifier
+
+def compute_maven_command_spec(environment, source, target):
+	command = [ "mvn-get" ]
+
+	command.append(compute_maven_artifact(source))
+
+	try:
+		repository_name = source[KEY_REPOSITORY]
+		credentials = get_maven_creds(repository_name)
+		if credentials:
+			if KEY_USERNAME in credentials:
+				environment = add_creds_environment(environment, credentials, ENV_PREFIX_MAVEN)
+			elif KEY_REPOSITORY in credentials:
+				environment[ENV_MAVEN_SERVER_ID] = credentials[KEY_REPOSITORY]
+				command.append(credentials[KEY_URL])
+	except KeyError:
+		pass
+
+	command.append(resolve_target(target))
+
+	return SimpleNamespace(command = command, environment = environment)
+
+def compute_direct_command_spec(environment, source, target):
+	command = [ "prep-artifact" ]
+
+	command.append(source[KEY_URL])
+
 	try:
 		credentials_name = source[KEY_CREDENTIALS]
 		credentials = get_direct_creds(credentials_name)
 		if not credentials:
 			raise Exception(f"Non-existent credentials '{credentials_name}' referenced from a direct artifact")
-		return add_creds_environment(environment, credentials, ENV_PREFIX_DIRECT)
+		environment = add_creds_environment(environment, credentials, ENV_PREFIX_DIRECT)
 	except KeyError:
-		# No credentials were given, so we don't care
-		return environment
+		pass
+	
+	command.append(resolve_target(target))
 
-def add_environment(environment, source):
-	if KEY_MAVEN == source[KEY_DOWNLOAD]:
-		return add_maven_environment(environment, source)
-	if KEY_DIRECT == source[KEY_DOWNLOAD]:
-		return add_direct_environment(environment, source)
-	return environment
+	try:
+		command.append(source[KEY_VERSION])
+	except KeyError:
+		pass
 
-def launch_process(src, tgt, log):
-	# Inherit the environment
-	# environment = add_environment(os.environ.copy(), src)
-	environment = add_environment({}, src)
-	raise Exception(f"KABOOM: {environment}")
+	return SimpleNamespace(command = command, environment = environment)
 
-	# TODO: Set the credentials envvars and whatnot
-	# TODO: Select which script to run
-	process_spec = []
+def compute_command_spec(environment, source, target):
+	type = source[KEY_DOWNLOAD]
+	command_generator = None
+	if KEY_MAVEN == type:
+		command_generator = compute_maven_command_spec
+	if KEY_DIRECT == type:
+		command_generator = compute_direct_command_spec
+	if not command_generator:
+		raise Exception(f"Unknown command type [{type}]")
+	return command_generator(environment, source, target)
 
-	# Run the thing!
-	return subprocess.run(process_spec, env=environment, stdout=log, stderr=subprocess.STDOUT)
+def launch_process(source, target, log):
+	spec = compute_command_spec(os.environ.copy(), source, target)
+	return subprocess.run(spec.command, env=spec.environment, stdout=log, stderr=subprocess.STDOUT)
 
 def run_download(spec):
 	log = None
@@ -350,6 +403,7 @@ def run_download(spec):
 	try:
 		log_fd, log_path = tempfile.mkstemp(prefix=f"artifact-download.{spec.product}-{spec.category}-{spec.artifact}.", suffix=".tmp")
 		with os.fdopen(log_fd) as log:
+			logging.info(f"💾 Downloading {spec.path} (via {spec.source[KEY_DOWNLOAD]})")
 			result = launch_process(spec.source, spec.path, log)
 
 		if result.returncode == 0:
@@ -387,10 +441,10 @@ def parse_and_resolve_values(item, required, supported):
 	return result
 
 def parse_maven_artifact(maven):
-	return parse_and_resolve_values(maven, [ KEY_GROUP, KEY_ARTIFACT, KEY_VERSION ], [ KEY_ENABLED, KEY_REPOSITORY, KEY_TYPE, KEY_CLASSIFIER ])
+	return parse_and_resolve_values(maven, [ KEY_GROUP, KEY_ARTIFACT ], [ KEY_VERSION, KEY_REPOSITORY, KEY_TYPE, KEY_CLASSIFIER ])
 
 def parse_direct_artifact(direct):
-	result = parse_and_resolve_values(direct, [ KEY_URL, KEY_VERSION ], [ KEY_ENABLED, KEY_CREDENTIALS ])
+	result = parse_and_resolve_values(direct, [ KEY_URL, KEY_VERSION ], [ KEY_CREDENTIALS ])
 	try:
 		cred = result[KEY_CREDENTIALS]
 		if not cred in AUTHENTICATION[KEY_CREDENTIALS]:

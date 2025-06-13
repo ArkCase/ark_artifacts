@@ -32,11 +32,11 @@ artifacts:
         # be used instead
         maven:
           repository: repoId # as defined above
-          group: ...
-          artifact: ...
-          version: ...
-          type: ...
-          classifier: ...
+          group: group-identifier
+          artifact: artifact-identifier
+          version: version-identifier
+          type: some-type
+          # classifier: some-classifier
 
       "filename-2.war":
         direct: # a curl download
