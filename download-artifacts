@@ -1,0 +1,253 @@
+#!/usr/bin/python3
+
+import copy
+import json
+import logging
+import os
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.parse
+import yaml
+from types import SimpleNamespace
+
+MIN_POLL_SLEEP = 5
+
+KEY_AUTHENTICATION = "authentication"
+KEY_CREDENTIALS = "credentials"
+KEY_MAVEN = "maven"
+KEY_ARTIFACTS = "artifacts"
+KEY_USERNAME = "username"
+KEY_PASSWORD = "password"
+KEY_PASSWORD_VAR = "password-var"
+KEY_REPOSITORY = "repository"
+KEY_GROUP_ID = "groupId"
+KEY_ARTIFACT_ID = "artifactId"
+KEY_VERSION = "version"
+KEY_TYPE = "type"
+KEY_CLASSIFIER = "classifier"
+KEY_URL = "url"
+
+def log_ok(msg):
+	logging.info(f"✅ {msg}")
+
+def log_warn(msg):
+	logging.warning(f"⚠️ {msg}")
+
+def log_err(msg):
+	logging.error(f"❌ {msg}")
+
+def fail(msg, code = 1):
+	log_err(msg)
+	os._exit(code)
+
+def sanitize_path(path):
+	# This makes things simpler
+	parts = path.split("/")
+
+	# This will not have a leading or trailing slash
+	return "/".join(list(filter(lambda x: (x and (x != ".") and (x != "..")), parts)))
+
+BASE_DIR = os.path.realpath(os.path.dirname(sys.argv[0]))
+
+if len(sys.argv) == 1:
+	source_file = "arkcase-artifacts.yaml"
+elif len(sys.argv) == 2:
+	# If the parameter is given, use it
+	source_file = sys.argv[1]
+elif len(sys.argv) > 2:
+	print(f"usage: {sys.argv[0]} configuration-file")
+	print("")
+	print(f"\tThe configuration file may be a file on the filesystem, or '-' for STDIN")
+	sys.exit(1)
+
+if source_file == "-":
+	source_file = sys.stdin
+	source_file_is_file = False
+else:
+	source_file_is_file = True
+
+# formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format = '%(asctime)s - %(threadName)-10s - %(levelname)-8s - %(message)s')
+
+# Load the configuration
+CONFIG={}
+try:
+	if source_file_is_file:
+		logging.info(f"💾 Loading the configuration from the file [{source_file}]...")
+		with open(source_file, "r") as f:
+			CONFIG = yaml.safe_load(f)
+	else:
+		if type(source_file) == str:
+			logging.info(f"🧾 Parsing the configuration from the string: [\n{source_file}\n]...")
+			show_data = False
+		else:
+			logging.info("⚙️ Parsing the configuration from stdin...")
+		CONFIG = yaml.safe_load(source_file)
+	if CONFIG is None:
+		raise Exception("The configuration is not in YAML format")
+except Exception as e:
+	# Yaml parse failed ... try as JSON
+	log_warn(f"The configuration file [{source_file}] was not in YAML format, trying JSON")
+	try:
+		with open(source_file, "r") as f:
+			CONFIG = json.load(f)
+	except Exception as e:
+		logging.exception("❌ Failed to parse the configuration as either YAML or JSON")
+		sys.exit(1)
+
+if (not CONFIG) or (type(CONFIG) != dict):
+	fail("Bad configuration format: must be a map!")
+
+#
+# See if there's any artifact info defined
+#
+try:
+	artifacts = CONFIG[KEY_ARTIFACTS]
+except KeyError:
+	artifacts = None
+
+if (not artifacts):
+	log_warn("No artifacts listed for download")
+	sys.exit(0)
+elif type(artifacts) != dict:
+	fail(f"Bad configuration format: the '{KEY_ARTIFACTS}' element must be a map")
+
+def validate_url(url):
+	try:
+		r = urllib.parse.urlparse(url)
+		return all([r.scheme, r.netloc]) and ((r.port is None) or (r.port > 0))
+	except ValueError:
+		return False
+
+def parse_credentials_item(name, item):
+	if (not item):
+		return None
+
+	if (type(item) != dict):
+		fail(f"Bad configuration format: the '{KEY_AUTHENTICATION}.{KEY_CREDENTIALS}.{name}' element must be a map")
+
+	# There must be a username and a password
+	username = item.get(KEY_USERNAME)
+	passwordVar = item.get(KEY_PASSWORD_VAR)
+
+	if (not username) or (not passwordVar):
+		fail(f"The credentials [{name}] must have non-empty values for '{KEY_USERNAME}' and '{KEY_PASSWORD_VAR}'")
+
+	# This string may be static, or may include ${VAR}
+	# interpolations with environment variables
+	username = os.path.expandvars(str(username))
+	if not username:
+		log_warn(f"The {KEY_USERNAME} from the credentials [{name}] evaluated to empty - this may be a problem")
+
+	# This is the name of the environment variable
+	# that contains the password value. It must exist
+	# at this point
+	passwordVar = str(passwordVar)
+	if not passwordVar:
+		fail(f"The {KEY_PASSWORD_VAR} from the credentials [{name}] is an empty string - this is not allowed")
+
+	template = f"${{{passwordVar}}}"
+	password = os.path.expandvars(template)
+	if (not password) or (password == template):
+		fail(f"The {KEY_PASSWORD_VAR} from the credentials [{name}] (with value '{passwordVar}') did not resolve to an actual password - this is not allowed")
+
+	return { KEY_USERNAME : username, KEY_PASSWORD : password }
+
+def parse_credentials(map):
+	if (not map):
+		return {}
+
+	if (type(map) != dict):
+		fail(f"Bad configuration format: the '{KEY_AUTHENTICATION}.{KEY_CREDENTIALS}' element must be a map")
+
+	credentials = {}
+	for name in map.keys():
+		item = parse_credentials_item(name, map[name])
+		if item:
+			credentials[name] = item
+
+	return credentials
+
+def parse_maven_credentials_item(credentials, name, item):
+	if (not item):
+		return None
+
+	if (type(item) != dict):
+		fail(f"Bad configuration format: the '{KEY_AUTHENTICATION}.{KEY_MAVEN}.{name}' element must be a map")
+
+	credName = item.get(KEY_CREDENTIALS)
+	url = item.get(KEY_URL)
+
+	if (not url) or (not credName):
+		fail(f"The Maven credentials [{name}] must have non-empty values for '{KEY_URL}' and '{KEY_CREDENTIALS}'")
+
+	# Make sure the named credentials exist
+	if credName not in credentials:
+		fail(f"The Maven credentials [{name}] reference the non-existant credentials named [{credName}] - must be one of {sorted(credentials.keys())}")
+	
+	# This string may be static, or may include ${VAR}
+	# interpolations with environment variables
+	url = os.path.expandvars(str(url))
+	if not url:
+		fail(f"The {KEY_URL} from the Maven credentials [{name}] evaluated to empty - this is not allowed")
+
+	# It must also be a valid URL
+	if not validate_url(url):
+		fail(f"The {KEY_URL} from the Maven credentials [{name}] evaluated to the invalid URL [{url}]")
+
+	result = copy.copy(credentials[credName])
+	result[KEY_URL] = url
+	return result
+
+def parse_maven_credentials(credentials, map):
+	if (not map):
+		return {}
+
+	if (type(map) != dict):
+		fail(f"Bad configuration format: the '{KEY_AUTHENTICATION}.{KEY_MAVEN}' element must be a map")
+
+	maven = {}
+	for name in map.keys():
+		item = parse_maven_credentials_item(credentials, name, map[name])
+		if item:
+			maven[name] = item
+
+	return maven
+
+def parse_authentication(config):
+	#
+	# Ok ... so first things first: validate the auth creds
+	#
+	result = { KEY_CREDENTIALS: {}, KEY_MAVEN: {} }
+
+	#
+	# See if there's any auth info defined
+	#
+	try:
+		authentication = config[KEY_AUTHENTICATION]
+	except KeyError:
+		return result
+
+	if (not authentication):
+		authentication = { }
+	elif type(authentication) != dict:
+		fail(f"Bad configuration format: the '{KEY_AUTHENTICATION}' element must be a map")
+
+	result[KEY_CREDENTIALS] = parse_credentials(authentication.get(KEY_CREDENTIALS))
+	result[KEY_MAVEN] = parse_maven_credentials(result[KEY_CREDENTIALS], authentication.get(KEY_MAVEN))
+	return result
+
+def get_maven_creds(name):
+	return AUTHENTICATION[KEY_MAVEN].get(name)
+
+def get_curl_creds(name):
+	return AUTHENTICATION[KEY_CREDENTIALS].get(name)
+
+AUTHENTICATION = parse_authentication(CONFIG)
+
+# TODO: Temporary debugging
+logging.info(f"👀 Using these settings:\n{yaml.safe_dump(AUTHENTICATION)}")
+
+# TODO: Process the artifacts

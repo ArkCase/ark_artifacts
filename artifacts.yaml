@@ -1,0 +1,70 @@
+# EnvVars would have to be defined in the CICD infrastructure
+authentication:
+  credentials:
+    cred-id:
+      username: "username-or-${VAR}"
+      # Direct value is not supported, for security
+      password-var: "ENVVAR_NAME"
+
+  maven:
+    repoId:
+      url: "https://www.google.com"
+      credentials: "cred-id" # as defined in authentication.credentials.${cred-id}
+
+# Can use these variables (format: ${VAR}):
+#   - EXT = the ArkCase extension ID (i.e. 'core', 'foia', 'dc-owc', 'usitc', etc.)
+#   - VER = the overarching ArkCase version being packaged
+#   - PORTAL_UI_VER = the portal UI version to use (defaults to ${VER})
+#   - PORTAL_API_VER = the portal API version to use (defaults to ${VER})
+
+#
+# This matches the structure within the artifacts containers
+# "/app/file" exactly, such that you can expressly indicate
+# where you want each artifact to go.
+#
+artifacts:
+  arkcase:
+    wars:
+      # These behave identically to the above entries in the "extends"
+      # (i.e. only one of either "maven" or "direct")
+      "filename-1.war":
+        # If the version element is not provided, the value for ${VER} will
+        # be used instead
+        maven:
+          repository: repoId # as defined above
+          groupId: ...
+          artifactId: ...
+          version: ...
+          type: ...
+          classifier: ...
+
+      "filename-2.war":
+        direct: # a curl download
+          credentials: "cred-id" # as defined above
+          url: "curl-friendly-URL"
+          version: "version-id-to-use"
+
+      "filename-3.war":
+        # ...
+
+    conf:
+      # ...
+      # ...
+      # ...
+
+    exts:
+      # ...
+      # ...
+      # ...
+
+  pentaho:
+    analytical:
+      # ...
+    reports:
+      # ...
+
+  solr:
+    configs:
+      # ...
+    collections:
+      # ...
