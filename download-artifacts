@@ -1,13 +1,16 @@
 #!/usr/bin/python3
 
+import concurrent.futures
 import copy
+import errno
 import json
 import logging
 import os
+import random
+import string
 import subprocess
 import sys
 import tempfile
-import time
 import urllib.parse
 import yaml
 from types import SimpleNamespace
@@ -16,14 +19,17 @@ MIN_POLL_SLEEP = 5
 
 KEY_AUTHENTICATION = "authentication"
 KEY_CREDENTIALS = "credentials"
+KEY_ENABLED = "enabled"
 KEY_MAVEN = "maven"
+KEY_DIRECT = "direct"
+KEY_DOWNLOAD = "download"
 KEY_ARTIFACTS = "artifacts"
 KEY_USERNAME = "username"
 KEY_PASSWORD = "password"
 KEY_PASSWORD_VAR = "password-var"
 KEY_REPOSITORY = "repository"
-KEY_GROUP_ID = "groupId"
-KEY_ARTIFACT_ID = "artifactId"
+KEY_GROUP = "group"
+KEY_ARTIFACT = "artifact"
 KEY_VERSION = "version"
 KEY_TYPE = "type"
 KEY_CLASSIFIER = "classifier"
@@ -114,6 +120,19 @@ if (not artifacts):
 elif type(artifacts) != dict:
 	fail(f"Bad configuration format: the '{KEY_ARTIFACTS}' element must be a map")
 
+def resolve_vars(value):
+	if not value:
+		return value
+	return os.path.expandvars(value)
+
+def is_enabled(map):
+	value = map.get(KEY_ENABLED)
+	if (value is None):
+		return True
+	if isinstance(value, (bool, str)):
+		return (str(value).lower().strip() != "false")
+	fail(f"Found a non-boolean, non-string value for an 'enabled' flag: [{value}]")
+
 def validate_url(url):
 	try:
 		r = urllib.parse.urlparse(url)
@@ -137,7 +156,7 @@ def parse_credentials_item(name, item):
 
 	# This string may be static, or may include ${VAR}
 	# interpolations with environment variables
-	username = os.path.expandvars(str(username))
+	username = resolve_vars(str(username))
 	if not username:
 		log_warn(f"The {KEY_USERNAME} from the credentials [{name}] evaluated to empty - this may be a problem")
 
@@ -149,7 +168,7 @@ def parse_credentials_item(name, item):
 		fail(f"The {KEY_PASSWORD_VAR} from the credentials [{name}] is an empty string - this is not allowed")
 
 	template = f"${{{passwordVar}}}"
-	password = os.path.expandvars(template)
+	password = resolve_vars(template)
 	if (not password) or (password == template):
 		fail(f"The {KEY_PASSWORD_VAR} from the credentials [{name}] (with value '{passwordVar}') did not resolve to an actual password - this is not allowed")
 
@@ -189,7 +208,7 @@ def parse_maven_credentials_item(credentials, name, item):
 	
 	# This string may be static, or may include ${VAR}
 	# interpolations with environment variables
-	url = os.path.expandvars(str(url))
+	url = resolve_vars(str(url))
 	if not url:
 		fail(f"The {KEY_URL} from the Maven credentials [{name}] evaluated to empty - this is not allowed")
 
@@ -242,12 +261,223 @@ def parse_authentication(config):
 def get_maven_creds(name):
 	return AUTHENTICATION[KEY_MAVEN].get(name)
 
-def get_curl_creds(name):
+def get_direct_creds(name):
 	return AUTHENTICATION[KEY_CREDENTIALS].get(name)
+
+def generate_encryption_key():
+	return "".join(random.SystemRandom().choice(string.ascii_uppercase + string.digits) for _ in range(64))
+
+def encrypt_decrypt_value(key, value, encrypt = True):
+	mode = "-e"
+	if not encrypt:
+		mode = "-d"
+	cmd = [ "openssl", "aes-256-cbc", "-a", "-A", "-salt", "-iter", "5", mode, "-k", key ]
+	result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, input=value.encode())
+	if result.returncode != 0:
+		raise Exception(f"Cryptography failed (rc={result.returncode}): {result.stderr}")
+	return result.stdout.decode()
+
+def encrypt_value(key, value):
+	return encrypt_decrypt_value(key, value, True)
+
+def decrypt_value(key, value):
+	return encrypt_decrypt_value(key, value, False)
+
+def launch_process(src, tgt, log):
+	# Inherit the environment
+	environment = os.environ.copy()
+
+	# TODO: Set the credentials envvars and whatnot
+	# TODO: Select which script to run
+	process_spec = []
+
+	# Run the thing!
+	return subprocess.run(process_spec, env=environment, stdout=log, stderr=subprocess.STDOUT)
+
+def run_download(spec):
+	log = None
+	log_path = None
+
+	if spec.path:
+		return True
+
+	source = spec.source
+	try:
+		log_fd, log_path = tempfile.mkstemp(prefix=f"artifact-download.{spec.product}-{spec.category}-{spec.artifact}.", suffix=".tmp")
+		log = os.fdopen(log_fd)
+
+		# Returns a CompletedProcess instance
+		result = launch_process(spec.source, spec.path, log)
+
+		if source[KEY_DOWNLOAD] == KEY_DIRECT:
+			# It's a direct download - need to run teh render-helpers script!
+			pass
+
+		# Wait for the process to end ...
+	except Exception as e:
+		log_err(f"POpen() call failed when downlading the artifact {spec.path}: {e}")
+		# Clean up!!
+		if log:
+			log.close()
+		if log_path:
+			os.remove(log_path)
+		return False
+
+def parse_and_resolve_values(item, required, supported):
+	result = {}
+
+	for name in required:
+		val = resolve_vars(item.get(name))
+		if not val:
+			raise Exception(f"the required key '{name}' is either missing or evaluates to an empty value")
+		result[name] = val
+
+	for name in supported:
+		if not name in item:
+			continue
+
+		val = resolve_vars(item.get(name))
+		if not val:
+			raise Exception(f"the (optional) key '{name}' is either missing or evaluates to an empty value")
+		result[name] = val
+
+	return result
+
+def parse_maven_artifact(maven):
+	return parse_and_resolve_values(maven, [ KEY_GROUP, KEY_ARTIFACT, KEY_VERSION ], [ KEY_ENABLED, KEY_REPOSITORY, KEY_TYPE, KEY_CLASSIFIER ])
+
+def parse_direct_artifact(direct):
+	result = parse_and_resolve_values(direct, [ KEY_URL, KEY_VERSION ], [ KEY_ENABLED, KEY_CREDENTIALS ])
+	try:
+		cred = result[KEY_CREDENTIALS]
+		if not cred in AUTHENTICATION[KEY_CREDENTIALS]:
+			possible = sorted(AUTHENTICATION[KEY_CREDENTIALS].keys())
+			raise Exception(f"Non-existent credentials [{cred}] referenced - must be one of {possible}")
+	except KeyError:
+		pass
+	return result
+
+def parse_artifact(artifact):
+	# Must either be a "maven" or "direct" artifact
+	result = {}
+	type = None
+	method = None
+	if KEY_MAVEN in artifact:
+		type = KEY_MAVEN
+		method = parse_maven_artifact
+	elif KEY_DIRECT in artifact:
+		type = KEY_DIRECT
+		method = parse_direct_artifact
+
+	if not method:
+		raise Exception("unsupported data structure")
+
+	result = method(artifact[type])
+	result[KEY_DOWNLOAD] = type
+	return result
+
+def download_all_artifacts(executor):
+	jobs = {}
+	bad_jobs = 0
+	for product_name in sorted(artifacts.keys()):
+		if (not product_name):
+			log_warn(f"A product was detected with an empty name - this is not allowed!")
+			continue
+
+		path = product_name
+
+		product = artifacts[product_name]
+		if (not product):
+			log_warn(f"The product [{path}] has no artifacts, skipping")
+			continue
+
+		if type(product) != dict:
+			fail(f"Configuration error: the product [{path}] is not declared as a map")
+
+		if not is_enabled(product):
+			log_warn(f"The product [{path}] is disabled, skipping")
+			continue
+
+		product_path = path
+		for category_name in sorted(product.keys()):
+			if (not category_name):
+				log_warn(f"A category for the product [{product_path}] was detected with an empty name - this is not allowed!")
+				continue
+
+			path = f"{product_path}/{category_name}"
+
+			category = product[category_name]
+			if (not category):
+				log_warn(f"The category [{path}] has no artifacts, skipping")
+				continue
+
+			if type(category) != dict:
+				fail(f"Configuration error: the category [{path}] is not declared as a map")
+
+			if not is_enabled(category):
+				log_warn(f"The category [{path}] is disabled, skipping")
+				continue
+
+			category_path = path
+			for artifact_name in sorted(category.keys()):
+				if (not artifact_name):
+					log_warn(f"An artifact for the category [{category_path}] was detected with an empty name - this is not allowed!")
+					continue
+
+				path = f"{category_path}/{artifact_name}"
+
+				artifact = category[artifact_name]
+				if (not artifact):
+					log_warn(f"The artifact [{path}] has an empty definition, skipping")
+					continue
+
+				if type(artifact) != dict:
+					fail(f"Configuration error: the artifact [{path}]  is not declared as a map")
+
+				if not is_enabled(artifact):
+					log_warn(f"The artifact [{path}] is disabled, skipping")
+					continue
+
+				try:
+					jobs[path] = SimpleNamespace(path = path, product = product_name, category = category_name, artifact = artifact_name, source = parse_artifact(artifact))
+				except Exception as e:
+					log_err(f"The artifact configuration for [{path}] is not valid: {e}\n\n{yaml.safe_dump(artifact)}")
+					bad_jobs += 1
+
+	if bad_jobs:
+		fail(f"Found {bad_jobs} invalid artifact definitions, cannot continue")
+
+	if not jobs:
+		log_ok(f"No valid artifact definitions were found")
+		return True
+
+	launched = {}
+	log_ok(f"Found {len(jobs)} valid artifact definitions:")
+	for path in sorted(jobs.keys()):
+		spec = jobs[path]
+		logging.info(f"🚀 Launching the {spec.source[KEY_DOWNLOAD]} download for [{path}]")
+		launched[path] = executor.submit(run_download, spec)
+
+	status = True
+	for artifact in sorted(launched.keys()):
+		future = launched[artifact]
+		try:
+			if not future.result():
+				status = False
+		except Exception as e:
+			status = False
+	return status
 
 AUTHENTICATION = parse_authentication(CONFIG)
 
-# TODO: Temporary debugging
-logging.info(f"👀 Using these settings:\n{yaml.safe_dump(AUTHENTICATION)}")
+# TODO: Make this configurable
+total_threads = 10
 
-# TODO: Process the artifacts
+with concurrent.futures.ThreadPoolExecutor(max_workers=(total_threads), thread_name_prefix="downloader") as executor:
+	status = 0
+	if download_all_artifacts(executor):
+		log_ok("All artifacts were downloaded successfully")
+	else:
+		log_err("Failed to download all artifacts")
+		status = 1
+	sys.exit(status)
