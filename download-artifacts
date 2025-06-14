@@ -279,7 +279,13 @@ def get_maven_creds(name):
 def get_direct_creds(name):
 	return AUTHENTICATION[KEY_CREDENTIALS].get(name)
 
-def generate_encryption_key():
+def get_encryption_key(key_var):
+	try:
+		key = os.environ[key_var]
+		if key:
+			return key
+	except KeyError:
+		pass
 	return "".join(random.SystemRandom().choice(string.ascii_uppercase + string.digits) for _ in range(64))
 
 def encrypt_decrypt_value(key, value, encrypt = True):
@@ -300,8 +306,9 @@ def decrypt_value(key, value):
 	return encrypt_decrypt_value(key, value, False)
 
 def add_creds_environment(environment, credentials, prefix):
-	encryption_key = generate_encryption_key()
-	environment[ENV_ENCRYPTION_KEY % prefix] = encryption_key
+	key_var = ENV_ENCRYPTION_KEY % prefix
+	encryption_key = get_encryption_key(key_var)
+	environment[key_var] = encryption_key
 	environment[ENV_USERNAME % prefix] = encrypt_value(encryption_key, credentials[KEY_USERNAME])
 	environment[ENV_PASSWORD % prefix] = encrypt_value(encryption_key, credentials[KEY_PASSWORD])
 	return environment
