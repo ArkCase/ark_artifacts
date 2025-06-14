@@ -143,9 +143,11 @@ def is_enabled(map):
 		return (str(value).lower().strip() != "false")
 	fail(f"Found a non-boolean, non-string value for an 'enabled' flag: [{value}]")
 
-def validate_url(url):
+def validate_url(url, support_file = False):
 	try:
 		r = urllib.parse.urlparse(url)
+		if support_file and r.scheme.lower() == "file":
+			return all([r.path]) and not any([r.netloc, r.params, r.query, r.fragment])
 		return all([r.scheme, r.netloc]) and ((r.port is None) or (r.port > 0))
 	except ValueError:
 		return False
@@ -364,10 +366,19 @@ def compute_maven_command_spec(environment, source, target):
 
 	return SimpleNamespace(command = command, environment = environment)
 
+def compute_direct_url(source):
+	url = source[KEY_URL]
+	if not validate_url(url, True):
+		raise Exception(f"Invalid URL found for a direct-download artifact: [{url}]")
+	parsed = urllib.parse.urlparse(url)
+	if parsed.scheme.lower() != "file":
+		return parsed.path
+	return url
+
 def compute_direct_command_spec(environment, source, target):
 	command = [ "prep-artifact" ]
 
-	command.append(source[KEY_URL])
+	command.append(compute_direct_url(source))
 
 	try:
 		credentials_name = source[KEY_CREDENTIALS]
@@ -377,7 +388,7 @@ def compute_direct_command_spec(environment, source, target):
 		environment = add_creds_environment(environment, credentials, ENV_PREFIX_DIRECT)
 	except KeyError:
 		pass
-	
+
 	command.append(resolve_target(target))
 
 	try:
