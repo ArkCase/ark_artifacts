@@ -111,6 +111,7 @@ ENV ARKCASE_WARS_DIR="${ARKCASE_DIR}/wars"
 ENV PENTAHO_DIR="${FILE_DIR}/pentaho"
 ENV PENTAHO_ANALYTICAL_DIR="${PENTAHO_DIR}/analytical"
 ENV PENTAHO_REPORTS_DIR="${PENTAHO_DIR}/reports"
+ENV PENTAHO_RESOURCE_BUNDLES_DIR="${PENTAHO_DIR}/resource-bundles"
 
 ENV SOLR_DIR="${FILE_DIR}/solr"
 ENV SOLR_CONFIG_DIR="${SOLR_DIR}/configs"
@@ -122,7 +123,8 @@ ENV SOLR_COLLECTIONS_DIR="${SOLR_DIR}/collections"
 #
 
 #
-# Make sure the base tree is created properly
+# Make sure the base tree is created properly. Non-existent
+# directories can lead to unexpected errors
 #
 RUN for n in \
         "${ARKCASE_DIR}" \
@@ -132,6 +134,7 @@ RUN for n in \
         "${PENTAHO_DIR}" \
         "${PENTAHO_ANALYTICAL_DIR}" \
         "${PENTAHO_REPORTS_DIR}" \
+        "${PENTAHO_RESOURCE_BUNDLES_DIR}" \
         "${SOLR_DIR}" \
         "${SOLR_CONFIG_DIR}" \
         "${SOLR_COLLECTIONS_DIR}" \
