@@ -371,7 +371,7 @@ def compute_direct_url(source):
 	if not validate_url(url, True):
 		raise Exception(f"Invalid URL found for a direct-download artifact: [{url}]")
 	parsed = urllib.parse.urlparse(url)
-	if parsed.scheme.lower() != "file":
+	if parsed.scheme.lower() == "file":
 		return parsed.path
 	return url
 
@@ -398,7 +398,7 @@ def compute_direct_command_spec(environment, source, target):
 
 	return SimpleNamespace(command = command, environment = environment)
 
-def compute_command_spec(environment, source, target):
+def compute_command_spec(source, target):
 	type = source[KEY_DOWNLOAD]
 	command_generator = None
 	if KEY_MAVEN == type:
@@ -407,11 +407,18 @@ def compute_command_spec(environment, source, target):
 		command_generator = compute_direct_command_spec
 	if not command_generator:
 		raise Exception(f"Unknown command type [{type}]")
-	return command_generator(environment, source, target)
+	return command_generator({}, source, target)
+
+def debug_process(spec):
+	logging.info(f"Running this command:\n\n{spec.command}\n\nWith these environment additions:\n\n{yaml.safe_dump(spec.environment)}")
+	return SimpleNamespace(returncode=0)
 
 def launch_process(source, target, log):
-	spec = compute_command_spec(os.environ.copy(), source, target)
-	return subprocess.run(spec.command, env=spec.environment, stdout=log, stderr=subprocess.STDOUT)
+	spec = compute_command_spec(source, target)
+	env = os.environ.copy()
+	env.update(spec.environment)
+	# return debug_process(spec)
+	return subprocess.run(spec.command, env=env, stdout=log, stderr=subprocess.STDOUT)
 
 def run_download(spec):
 	log = None
