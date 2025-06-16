@@ -145,7 +145,6 @@ if args.threads:
 		total_threads = MAX_THREADS
 
 # Load the configuration
-CONFIG = {}
 if source_file_is_file:
 	if not os.path.isfile(source_file):
 		fail(f"The path [{source_file}] is not a valid file")
@@ -165,12 +164,21 @@ else:
 	else:
 		logging.info("⚙️ Parsing the configuration from stdin...")
 
-CONFIG = yaml.safe_load(config_file)
+CONFIG = {}
+try:
+	CONFIG = yaml.safe_load(config_file)
+except Exception as e:
+	log_err(f"Failed to parse the configuration as YAML, will try JSON: {e}")
+	CONFIG = None
+
 if CONFIG is None:
 	# Yaml parse failed ... try as JSON
-	log_warn(f"The configuration was not in YAML format, trying JSON")
+	logging.exception("❌ Failed to parse the configuration as YAML, will try JSON")
 	try:
-		CONFIG = json.load(config_file)
+		if type(config_file) == str:
+			CONFIG = json.loads(config_file)
+		else:
+			CONFIG = json.load(config_file)
 	except Exception as e:
 		logging.exception("❌ Failed to parse the configuration as either YAML or JSON")
 		sys.exit(1)
