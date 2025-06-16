@@ -424,11 +424,11 @@ def compute_maven_command_spec(environment, source, target):
 		repository_name = source[KEY_REPOSITORY]
 		credentials = get_maven_creds(repository_name)
 		if credentials:
+			command.append(credentials[KEY_URL])
 			if KEY_USERNAME in credentials:
 				environment = add_creds_environment(environment, credentials, ENV_PREFIX_MAVEN)
 			elif KEY_REPOSITORY in credentials:
 				environment[ENV_MAVEN_SERVER_ID] = credentials[KEY_REPOSITORY]
-				command.append(credentials[KEY_URL])
 	except KeyError:
 		pass
 
