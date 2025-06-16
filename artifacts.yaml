@@ -11,25 +11,58 @@ authentication:
       url: "https://www.google.com"
       credentials: "cred-id" # as defined in authentication.credentials.${cred-id}
 
-# Can use these variables (format: ${VAR}):
+# Can use any environment variables here (format: ${VAR}):
 #   - EXT = the ArkCase extension ID (i.e. 'core', 'foia', 'dc-owc', 'usitc', etc.)
 #   - VER = the overarching ArkCase version being packaged
 #   - PORTAL_UI_VER = the portal UI version to use (defaults to ${VER})
 #   - PORTAL_API_VER = the portal API version to use (defaults to ${VER})
+#   - other variables are also supported
 
 #
 # This matches the structure within the artifacts containers
 # "/app/file" exactly, such that you can expressly indicate
 # where you want each artifact to go.
 #
+# Example:
+#   artifacts.arkcase.wars."filename-1.war" -> /app/file/arkcase/wars/filename-1.war
+#
+# Maven artifact specs follow this pattern:
+#
+#   "artifact-name.ext":
+#     enabled: (true|false , optional, self-explanatory)
+#     maven:
+#       repository: maven-repository-id (as defined in the authentication section)
+#       group: maven-group-id
+#       artifact: maven-artifact-id
+#       version: maven-version-number
+#       type: maven-artifact-type
+#       classifier: maven-artifact-classifier
+#
+# Direct download artifact specs follow this pattern:
+#
+#   "artifact-name.ext":
+#     enabled: (true|false , optional, self-explanatory)
+#     direct:
+#       credentials: "credentials-id" (as defined in the authentication section)
+#       url: the-url-to-download (can be file:///... or any other valid URL)
+#       version: artifact-version
+#
 artifacts:
+
+  #
+  # Artifacts for ArkCase
+  #
   arkcase:
+
+    #
+    # WAR files to deploy via Tomcat
+    #
     wars:
-      # These behave identically to the above entries in the "extends"
-      # (i.e. only one of either "maven" or "direct")
+      #
+      # Each entry in this map is the name of the WAR file
+      # that will be deployed
+      #
       "filename-1.war":
-        # If the version element is not provided, the value for ${VER} will
-        # be used instead
         maven:
           repository: repoId # as defined above
           group: group-identifier
