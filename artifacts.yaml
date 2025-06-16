@@ -41,7 +41,7 @@ artifacts:
       "filename-2.war":
         direct: # a curl download
           credentials: "cred-id" # as defined above
-          url: "curl-friendly-URL"
+          url: "https://curl-friendly-URL.com/kaka.war"
           version: "version-id-to-use"
 
       "filename-3.war":
