@@ -16,9 +16,12 @@ import urllib.parse
 import yaml
 from types import SimpleNamespace
 
-MIN_POLL_SLEEP = 5
+MIN_THREADS = 0
+DEF_THREADS = 10
+MAX_THREADS = DEF_THREADS * 3
 
 DEFAULT_SOURCE_FILE = "artifacts.yaml"
+DEFAULT_FILE_DIR = "/app/file"
 
 KEY_AUTHENTICATION = "authentication"
 KEY_CREDENTIALS = "credentials"
@@ -41,6 +44,7 @@ KEY_URL = "url"
 ENV_ARTIFACTS_CONF = "ARTIFACTS_CONF"
 ENV_ARTIFACTS_DEBUG = "ARTIFACTS_DEBUG"
 ENV_ARTIFACTS_SIMULATE = "ARTIFACTS_SIMULATE"
+ENV_ARTIFACTS_THREADS = "ARTIFACTS_THREADS"
 ENV_PREFIX_MAVEN = "MVN_GET"
 ENV_PREFIX_DIRECT = "CURL"
 ENV_ENCRYPTION_KEY = "%s_ENCRYPTION_KEY"
@@ -73,12 +77,44 @@ def sanitize_path(path):
 
 parser = argparse.ArgumentParser(description="Artifact Downloader")
 parser.add_argument("config", metavar="config", action="store", help=f"The configuration to use (if not given, it will be read from the {ENV_ARTIFACTS_CONF} environment variable)", type=str, nargs="?")
+parser.add_argument("--filedir", metavar="file_dir", action="store", help=f"When set, will set the base directory into which the artifacts will be downloaded (if not given, the value from the  {ENV_FILE_DIR} environment variable will be used)", type=str, nargs=1)
+parser.add_argument("--threads", metavar="secrets", action="store", help=f"The number of threads to use when downloading artifacts (if not given, it will be read from the {ENV_ARTIFACTS_THREADS} environment variable)", type=int, nargs=1)
 parser.add_argument("--debug", metavar="debug", action="store_const", const=True, help=f"When set, increases debugging output (if not given, it will be recomputedad from the {ENV_ARTIFACTS_DEBUG} environment variable)")
 parser.add_argument("--simulate", metavar="simulate", action="store_const", const=True, help=f"When set, will only output the details about the work that would be done, without doing it (if not given, it will be computed from the {ENV_ARTIFACTS_SIMULATE} environment variable)")
 
 args = parser.parse_args()
 
+# formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+log_level = logging.INFO
+if args.debug:
+	log_level = logging.DEBUG
+
+logging.basicConfig(level=log_level, format = '%(asctime)s - %(threadName)-10s - %(levelname)-8s - %(message)s')
+
 BASE_DIR = os.path.realpath(os.path.dirname(sys.argv[0]))
+
+FILE_DIR = None
+if args.filedir:
+	FILE_DIR = args.filedir[0]
+elif ENV_FILE_DIR in os.environ:
+	FILE_DIR = os.environ[ENV_FILE_DIR]
+
+if not FILE_DIR:
+	FILE_DIR = DEFAULT_FILE_DIR
+
+if not os.path.exists(FILE_DIR):
+	try:
+		os.mkdir(FILE_DIR)
+	except Exception as e:
+		fail(f"Failed to create the missing file directory [{FILE_DIR}]: {e}")
+
+if not os.path.isdir(FILE_DIR):
+	fail(f"The path [{FILE_DIR}] is not a valid directory")
+
+if not os.access(FILE_DIR, os.R_OK|os.W_OK|os.X_OK):
+	fail(f"The path [{FILE_DIR}] is not fully accessible to the current user (rwX)")
+
+logging.info(f"Will download all artifacts into [{FILE_DIR}]")
 
 if args.config:
 	source_file = args.config
@@ -95,11 +131,13 @@ if source_file == "-":
 	source_file = sys.stdin
 	source_file_is_file = False
 
-# formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-log_level = logging.INFO
-if args.debug:
-	log_level = logging.DEBUG
-logging.basicConfig(level=log_level, format = '%(asctime)s - %(threadName)-10s - %(levelname)-8s - %(message)s')
+total_threads = DEF_THREADS
+if args.threads:
+	total_threads = args.threads[0]
+	if total_threads < MIN_THREADS:
+		total_threads = MIN_THREADS
+	elif total_threads > MAX_THREADS:
+		total_threads = MAX_THREADS
 
 # Load the configuration
 CONFIG={}
@@ -330,7 +368,7 @@ def add_creds_environment(environment, credentials, prefix):
 	return environment
 
 def resolve_target(target):
-	full_target = os.environ.get(ENV_FILE_DIR)
+	full_target = FILE_DIR
 	if not full_target:
 		full_target = ""
 	else:
@@ -612,9 +650,7 @@ def download_all_artifacts(executor):
 
 AUTHENTICATION = parse_authentication(CONFIG)
 
-# TODO: Make this configurable
-total_threads = 10
-
+logging.info(f"Will download up to {total_threads} artifacts concurrently")
 with concurrent.futures.ThreadPoolExecutor(max_workers=(total_threads), thread_name_prefix="downloader") as executor:
 	status = 0
 	if download_all_artifacts(executor):
