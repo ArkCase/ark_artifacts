@@ -9,6 +9,11 @@ authentication:
   maven:
     repoId:
       url: "https://www.google.com"
+
+      # If this credentials ID does not exist above, then it will
+      # be used by the mvn-get script as the server ID in order to
+      # leverage credentials from the Maven security infrastructure
+      # (i.e. settings.xml + settings-security.xml)
       credentials: "cred-id" # as defined in authentication.credentials.${cred-id}
 
 # Can use any environment variables here (format: ${VAR}):
