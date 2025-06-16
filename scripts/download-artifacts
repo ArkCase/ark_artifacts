@@ -145,27 +145,32 @@ if args.threads:
 		total_threads = MAX_THREADS
 
 # Load the configuration
-CONFIG={}
-try:
-	if source_file_is_file:
-		logging.info(f"💾 Loading the configuration from the file [{source_file}]...")
-		with open(source_file, "r") as f:
-			CONFIG = yaml.safe_load(f)
-	else:
-		if type(source_file) == str:
-			logging.info(f"🧾 Parsing the configuration from the string: [\n{source_file}\n]...")
-			show_data = False
-		else:
-			logging.info("⚙️ Parsing the configuration from stdin...")
-		CONFIG = yaml.safe_load(source_file)
-	if CONFIG is None:
-		raise Exception("The configuration is not in YAML format")
-except Exception as e:
-	# Yaml parse failed ... try as JSON
-	log_warn(f"The configuration file [{source_file}] was not in YAML format, trying JSON")
+CONFIG = {}
+if source_file_is_file:
+	if not os.path.isfile(source_file):
+		fail(f"The path [{source_file}] is not a valid file")
+	if not os.access(source_file, os.R_OK):
+		fail(f"The file [{source_file}] is not readable by the current user")
+	logging.info(f"💾 Loading the configuration from the file [{source_file}]...")
 	try:
 		with open(source_file, "r") as f:
-			CONFIG = json.load(f)
+			config_file = f.read()
+	except Exception as e:
+		fail(f"Failed to open the configuration file [{source_file}] for reading: {e}")
+else:
+	config_file = source_file
+	if type(source_file) == str:
+		logging.info(f"🧾 Parsing the configuration from the string: [\n{source_file}\n]...")
+		show_data = False
+	else:
+		logging.info("⚙️ Parsing the configuration from stdin...")
+
+CONFIG = yaml.safe_load(config_file)
+if CONFIG is None:
+	# Yaml parse failed ... try as JSON
+	log_warn(f"The configuration was not in YAML format, trying JSON")
+	try:
+		CONFIG = json.load(config_file)
 	except Exception as e:
 		logging.exception("❌ Failed to parse the configuration as either YAML or JSON")
 		sys.exit(1)
@@ -655,16 +660,19 @@ def download_all_artifacts(executor):
 
 AUTHENTICATION = parse_authentication(CONFIG)
 
-logging.info(f"Will download up to {total_threads} artifacts concurrently")
-with concurrent.futures.ThreadPoolExecutor(max_workers=(total_threads), thread_name_prefix="downloader") as executor:
-	status = 0
-	if download_all_artifacts(executor):
-		if args.simulate:
-			log_warn("Simulation mode was active, will exit with a non-0 status")
-			status = 1
+try:
+	logging.info(f"Will download up to {total_threads} artifacts concurrently")
+	with concurrent.futures.ThreadPoolExecutor(max_workers=(total_threads), thread_name_prefix="downloader") as executor:
+		status = 0
+		if download_all_artifacts(executor):
+			if args.simulate:
+				log_warn("Simulation mode was active, will exit with a non-0 status")
+				status = 1
+			else:
+				log_ok("All artifacts were downloaded successfully")
 		else:
-			log_ok("All artifacts were downloaded successfully")
-	else:
-		log_err("Failed to download all artifacts")
-		status = 1
-	sys.exit(status)
+			log_err("Failed to download all artifacts")
+			status = 1
+		sys.exit(status)
+except KeyboardInterrupt:
+	fail("Aborted")
