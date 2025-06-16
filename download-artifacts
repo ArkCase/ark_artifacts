@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 
+import argparse
 import concurrent.futures
 import copy
 import errno
@@ -16,6 +17,8 @@ import yaml
 from types import SimpleNamespace
 
 MIN_POLL_SLEEP = 5
+
+DEFAULT_SOURCE_FILE = "artifacts.yaml"
 
 KEY_AUTHENTICATION = "authentication"
 KEY_CREDENTIALS = "credentials"
@@ -35,6 +38,9 @@ KEY_TYPE = "type"
 KEY_CLASSIFIER = "classifier"
 KEY_URL = "url"
 
+ENV_ARTIFACTS_CONF = "ARTIFACTS_CONF"
+ENV_ARTIFACTS_DEBUG = "ARTIFACTS_DEBUG"
+ENV_ARTIFACTS_SIMULATE = "ARTIFACTS_SIMULATE"
 ENV_PREFIX_MAVEN = "MVN_GET"
 ENV_PREFIX_DIRECT = "CURL"
 ENV_ENCRYPTION_KEY = "%s_ENCRYPTION_KEY"
@@ -65,27 +71,35 @@ def sanitize_path(path):
 	# This will not have a leading or trailing slash
 	return "/".join(list(filter(lambda x: (x and (x != ".") and (x != "..")), parts)))
 
+parser = argparse.ArgumentParser(description="Artifact Downloader")
+parser.add_argument("config", metavar="config", action="store", help=f"The configuration to use (if not given, it will be read from the {ENV_ARTIFACTS_CONF} environment variable)", type=str, nargs="?")
+parser.add_argument("--debug", metavar="debug", action="store_const", const=True, help=f"When set, increases debugging output (if not given, it will be recomputedad from the {ENV_ARTIFACTS_DEBUG} environment variable)")
+parser.add_argument("--simulate", metavar="simulate", action="store_const", const=True, help=f"When set, will only output the details about the work that would be done, without doing it (if not given, it will be computed from the {ENV_ARTIFACTS_SIMULATE} environment variable)")
+
+args = parser.parse_args()
+
 BASE_DIR = os.path.realpath(os.path.dirname(sys.argv[0]))
 
-if len(sys.argv) == 1:
-	source_file = "arkcase-artifacts.yaml"
-elif len(sys.argv) == 2:
-	# If the parameter is given, use it
-	source_file = sys.argv[1]
-elif len(sys.argv) > 2:
-	print(f"usage: {sys.argv[0]} configuration-file")
-	print("")
-	print(f"\tThe configuration file may be a file on the filesystem, or '-' for STDIN")
-	os._exit(1)
+if args.config:
+	source_file = args.config
+	source_file_is_file = True
+elif ENV_ARTIFACTS_CONF in os.environ:
+	source_file = os.environ[ENV_ARTIFACTS_CONF]
+	source_file_is_file = False
+else:
+	source_file = DEFAULT_SOURCE_FILE
+	source_file_is_file = True
 
+# Handle STDIN
 if source_file == "-":
 	source_file = sys.stdin
 	source_file_is_file = False
-else:
-	source_file_is_file = True
 
 # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logging.basicConfig(level=logging.INFO, format = '%(asctime)s - %(threadName)-10s - %(levelname)-8s - %(message)s')
+log_level = logging.INFO
+if args.debug:
+	log_level = logging.DEBUG
+logging.basicConfig(level=log_level, format = '%(asctime)s - %(threadName)-10s - %(levelname)-8s - %(message)s')
 
 # Load the configuration
 CONFIG={}
@@ -409,16 +423,22 @@ def compute_command_spec(source, target):
 		raise Exception(f"Unknown command type [{type}]")
 	return command_generator({}, source, target)
 
-def debug_process(spec):
+def simulate_process(spec, log):
 	logging.info(f"Running this command:\n\n{spec.command}\n\nWith these environment additions:\n\n{yaml.safe_dump(spec.environment)}")
 	return SimpleNamespace(returncode=0)
 
-def launch_process(source, target, log):
-	spec = compute_command_spec(source, target)
+def run_process(spec, log):
 	env = os.environ.copy()
 	env.update(spec.environment)
-	# return debug_process(spec)
 	return subprocess.run(spec.command, env=env, stdout=log, stderr=subprocess.STDOUT)
+
+def launch_process(source, target, log):
+	spec = compute_command_spec(source, target)
+	process = run_process
+	if args.simulate:
+		process = simulate_process
+	return process(spec, log)
+	# return run_process(spec, log)
 
 def run_download(spec):
 	log = None
@@ -598,7 +618,11 @@ total_threads = 10
 with concurrent.futures.ThreadPoolExecutor(max_workers=(total_threads), thread_name_prefix="downloader") as executor:
 	status = 0
 	if download_all_artifacts(executor):
-		log_ok("All artifacts were downloaded successfully")
+		if args.simulate:
+			log_warn("Simulation mode was active, will exit with a non-0 status")
+			status = 1
+		else:
+			log_ok("All artifacts were downloaded successfully")
 	else:
 		log_err("Failed to download all artifacts")
 		status = 1
