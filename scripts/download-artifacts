@@ -636,6 +636,8 @@ def download_all_artifacts(executor):
 					log_warn(f"The artifact [{path}] is disabled, skipping")
 					continue
 
+				# Apply any envvars in the file name
+				artifact_name = os.path.expandvars(artifact_name)
 				try:
 					jobs[path] = SimpleNamespace(path = path, product = product_name, category = category_name, artifact = artifact_name, source = parse_artifact(artifact))
 				except Exception as e:
