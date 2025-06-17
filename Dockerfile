@@ -102,6 +102,7 @@ COPY --chown=root:root --from=builder /artifacts-httpd /usr/local/bin
 COPY --chown=root:root scripts/ /usr/local/bin
 RUN chmod a+rx /usr/local/bin/*
 ENV RENDER_LOCK="${FILE_DIR}/.render-lock"
+ENV ARTIFACTS_MANIFEST="${FILE_DIR}/.artifacts.yaml"
 
 ENV ARKCASE_DIR="${FILE_DIR}/arkcase"
 ENV ARKCASE_CONF_DIR="${ARKCASE_DIR}/conf"
