@@ -521,41 +521,47 @@ def run_download(spec):
 		if log_path:
 			os.remove(log_path)
 
-def parse_and_resolve_values(item, required, supported):
+def parse_and_resolve_values(path, item, required, supported):
 	result = {}
 
 	for name in required:
-		val = resolve_vars(item.get(name))
+		if not name in item:
+			raise Exception(f"the required key '{name}' is missing for [{path}]")
+
+		val = resolve_vars(item[name])
 		if not val:
-			raise Exception(f"the required key '{name}' is either missing or evaluates to an empty value")
+			raise Exception(f"the required key '{name}' value [{item[name]}] evaluates to an empty value for [{path}]")
+
 		result[name] = val
 
 	for name in supported:
 		if not name in item:
 			continue
 
-		val = resolve_vars(item.get(name))
+		val = resolve_vars(item[name])
 		if not val:
-			raise Exception(f"the (optional) key '{name}' is either missing or evaluates to an empty value")
+			# Ignore empty values
+			continue
+
 		result[name] = val
 
 	return result
 
-def parse_maven_artifact(maven):
-	return parse_and_resolve_values(maven, [ KEY_GROUP, KEY_ARTIFACT ], [ KEY_VERSION, KEY_REPOSITORY, KEY_TYPE, KEY_CLASSIFIER ])
+def parse_maven_artifact(path, maven):
+	return parse_and_resolve_values(path, maven, [ KEY_GROUP, KEY_ARTIFACT ], [ KEY_VERSION, KEY_REPOSITORY, KEY_TYPE, KEY_CLASSIFIER ])
 
-def parse_direct_artifact(direct):
-	result = parse_and_resolve_values(direct, [ KEY_URL, KEY_VERSION ], [ KEY_CREDENTIALS ])
+def parse_direct_artifact(path, direct):
+	result = parse_and_resolve_values(path, direct, [ KEY_URL, KEY_VERSION ], [ KEY_CREDENTIALS ])
 	try:
 		cred = result[KEY_CREDENTIALS]
 		if not cred in AUTHENTICATION[KEY_CREDENTIALS]:
 			possible = sorted(AUTHENTICATION[KEY_CREDENTIALS].keys())
-			raise Exception(f"Non-existent credentials [{cred}] referenced - must be one of {possible}")
+			raise Exception(f"Non-existent credentials [{cred}] referenced from [{path}] - must be one of {possible}")
 	except KeyError:
 		pass
 	return result
 
-def parse_artifact(artifact):
+def parse_artifact(path, artifact):
 	# Must either be a "maven" or "direct" artifact
 	result = {}
 	type = None
@@ -570,7 +576,7 @@ def parse_artifact(artifact):
 	if not method:
 		raise Exception("unsupported data structure")
 
-	result = method(artifact[type])
+	result = method(path, artifact[type])
 	result[KEY_DOWNLOAD] = type
 	return result
 
@@ -639,7 +645,7 @@ def download_all_artifacts(executor):
 				# Apply any envvars in the file name
 				artifact_name = os.path.expandvars(artifact_name)
 				try:
-					jobs[path] = SimpleNamespace(path = path, product = product_name, category = category_name, artifact = artifact_name, source = parse_artifact(artifact))
+					jobs[path] = SimpleNamespace(path = path, product = product_name, category = category_name, artifact = artifact_name, source = parse_artifact(path, artifact))
 				except Exception as e:
 					log_err(f"The artifact configuration for [{path}] is not valid: {e}\n\n{yaml.safe_dump(artifact)}")
 					bad_jobs += 1
@@ -672,7 +678,7 @@ AUTHENTICATION = parse_authentication(CONFIG)
 
 try:
 	logging.info(f"Will download up to {total_threads} artifacts concurrently")
-	with concurrent.futures.ThreadPoolExecutor(max_workers=(total_threads), thread_name_prefix="downloader") as executor:
+	with concurrent.futures.ThreadPoolExecutor(max_workers=(total_threads), thread_name_prefix="worker") as executor:
 		status = 0
 		if download_all_artifacts(executor):
 			if args.simulate:
