@@ -20,19 +20,13 @@ ARG BASE_VER="8"
 ARG BASE_VER_PFX=""
 ARG BASE_IMG="${BASE_REGISTRY}/${BASE_REPO}:${BASE_VER_PFX}${BASE_VER}"
 
-ARG BUILDER_IMAGE="golang"
-ARG BUILDER_VER="1.24-alpine3.22"
-ARG BUILDER_IMG="${BUILDER_IMAGE}:${BUILDER_VER}"
+ARG HTTPD_REGISTRY="${BASE_REGISTRY}"
+ARG HTTPD_REPO="arkcase/artifacts-httpd"
+ARG HTTPD_VER="latest"
+ARG HTTPD_VER_PFX="${BASE_VER_PFX}"
+ARG HTTPD_IMAGE="${HTTPD_REGISTRY}/${HTTPD_REPO}:${HTTPD_VER_PFX}${HTTPD_VER}"
 
-FROM "${BUILDER_IMG}" AS builder
-
-ARG HTTPD_SRCPATH="/build/artifacts-httpd"
-
-COPY httpd "${HTTPD_SRCPATH}"
-RUN cd "${HTTPD_SRCPATH}" && \
-    GO111MODULE=on \
-    CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-    go build -a -ldflags "-extldflags '-static'" -o /artifacts-httpd
+FROM "${HTTPD_IMAGE}" AS httpd
 
 FROM "${BASE_IMG}"
 
@@ -98,7 +92,7 @@ RUN yum -y install \
 #
 # Add the script that allows us to add files
 #
-COPY --chown=root:root --from=builder /artifacts-httpd /usr/local/bin
+COPY --chown=root:root --from=httpd /artifacts-httpd /usr/local/bin
 COPY --chown=root:root scripts/ /usr/local/bin
 RUN chmod a+rx /usr/local/bin/*
 ENV RENDER_LOCK="${FILE_DIR}/.render-lock"
