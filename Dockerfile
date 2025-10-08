@@ -16,7 +16,7 @@ ARG VER="1.6.5"
 
 ARG BASE_REGISTRY="${PUBLIC_REGISTRY}"
 ARG BASE_REPO="arkcase/base"
-ARG BASE_VER="8"
+ARG BASE_VER="22.04"
 ARG BASE_VER_PFX=""
 ARG BASE_IMG="${BASE_REGISTRY}/${BASE_REPO}:${BASE_VER_PFX}${BASE_VER}"
 
@@ -36,10 +36,6 @@ FROM "${BASE_IMG}"
 ARG ARCH
 ARG OS
 ARG VER
-ARG BASE_DIR="/app"
-ARG FILE_DIR="${BASE_DIR}/file"
-ARG INIT_DIR="${BASE_DIR}/init"
-ARG DEPL_DIR="${BASE_DIR}/depl"
 
 LABEL ORG="ArkCase LLC" \
       MAINTAINER="Armedia Devops Team <devops@armedia.com>" \
@@ -49,52 +45,18 @@ LABEL ORG="ArkCase LLC" \
 #
 # Environment variables
 #
-ENV JAVA_HOME="/usr/lib/jvm/java" \
-    LANG="en_US.UTF-8" \
-    LANGUAGE="en_US:en" \
-    LC_ALL="en_US.UTF-8" \
-    BASE_DIR="${BASE_DIR}" \ 
-    FILE_DIR="${FILE_DIR}" \
-    INIT_DIR="${INIT_DIR}" \
-    VER="${VER}"
-
-ENV LANG=en_US.UTF-8 \
-    LANGUAGE=en_US:en \
-    LC_ALL=en_US.UTF-8
-
-#################
-# Prepare the base environment
-#################
-ENV PATH="${PATH}:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
-
-#
-# We add all of this crap b/c it may come in handy later and it doesn't
-# weigh enough to be of true concern
-#
-RUN yum -y install \
-        epel-release && \
-    yum -y install \
-        java-11-openjdk-devel \
-        git \
-        jq \
-        openssl \
-        patch \
-        python3-pip \
-        unzip \
-        wget \
-        xmlstarlet \
-        zip \
-    && \
-    yum -y clean all && \
-    pip3 install openpyxl && \
-    rm -rf /tmp/*
+ENV VER="${VER}"
+ENV FILE_DIR="${BASE_DIR}/file"
+ENV INIT_DIR="${BASE_DIR}/init"
+ENV DEPL_DIR="${BASE_DIR}/depl"
 
 #
 # Add the script that allows us to add files
 #
-COPY --chown=root:root --from=httpd /artifacts-httpd /usr/local/bin
-COPY --chown=root:root scripts/ /usr/local/bin
-RUN chmod a+rx /usr/local/bin/*
+COPY --chown=root:root --chmod=0755 --from=httpd /artifacts-httpd /usr/local/bin
+COPY --chown=root:root --chmod=0755 entrypoint /
+COPY --chown=root:root --chmod=0755 scripts/* /usr/local/bin
+
 ENV RENDER_LOCK="${FILE_DIR}/.render-lock"
 ENV ARTIFACTS_MANIFEST="${FILE_DIR}/.artifacts.yaml"
 
@@ -137,4 +99,4 @@ RUN for n in \
 
 USER root
 WORKDIR "${FILE_DIR}"
-ENTRYPOINT [ "/usr/local/bin/entrypoint" ]
+ENTRYPOINT [ "/entrypoint" ]
