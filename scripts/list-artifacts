@@ -13,8 +13,7 @@ while read FILE ; do
 	VER="${FILE}.ver"
 	is_file_readable "${VER}" && VER="$(<"${VER}")" || VER="(unknown)"
 
-	echo "${FILE} ${VER} ${SUM}"
+	echo "${FILE}:${VER}:${SUM}"
 done < <( find "${FILE_DIR}" -type f -not -name '*.ver' -not -name '*.sum' -not -name '.*' | sort ) | \
-	column -n "artifacts" --table-columns filename,version,checksum --json | \
-	jq -r
+	column --separator ":" --table --table-columns ARTIFACT,VERSION,CHECKSUM
 exit 0
