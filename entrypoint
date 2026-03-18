@@ -4,6 +4,11 @@ set -euo pipefail
 . /.functions
 
 #
+# First things first: FIPS!!!
+#
+set_fips
+
+#
 # Make sure all helper files are up-to-date
 #
 rebuild-helpers
