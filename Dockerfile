@@ -37,16 +37,26 @@ FROM "${BASE_IMG}"
 ARG ARCH
 ARG OS
 ARG VER
+ARG APP_UID="1515"
+ARG APP_USER="artifacts"
+ARG APP_GID="${APP_UID}"
+ARG APP_GROUP="${APP_USER}"
 
 LABEL ORG="ArkCase LLC" \
       MAINTAINER="Armedia Devops Team <devops@armedia.com>" \
       APP="ArkCase Configuration" \
       VERSION="${VER}"
 
+ENV APP_UID="${APP_UID}" \
+    APP_USER="${APP_USER}" \
+    APP_GID="${APP_GID}" \
+    APP_GROUP="${APP_GROUP}"
+
 #
 # Environment variables
 #
 ENV VER="${VER}"
+ENV HOME_DIR="${BASE_DIR}/home"
 ENV FILE_DIR="${BASE_DIR}/file"
 ENV INIT_DIR="${BASE_DIR}/init"
 ENV DEPL_DIR="${BASE_DIR}/depl"
@@ -57,6 +67,9 @@ ENV DEPL_DIR="${BASE_DIR}/depl"
 COPY --chown=root:root --chmod=0755 --from=httpd /artifacts-httpd /usr/local/bin
 COPY --chown=root:root --chmod=0755 entrypoint /
 COPY --chown=root:root --chmod=0755 scripts/* /usr/local/bin
+
+RUN groupadd --gid "${APP_GID}" "${APP_GROUP}" && \
+    useradd  --uid "${APP_UID}" --gid "${APP_GROUP}" --groups "${ACM_GROUP}" --create-home --home-dir "${HOME_DIR}" "${APP_USER}"
 
 ENV RENDER_LOCK="${FILE_DIR}/.render-lock"
 ENV ARTIFACTS_MANIFEST="${FILE_DIR}/.artifacts.yaml"
@@ -81,10 +94,21 @@ ENV SOLR_COLLECTIONS_DIR="${SOLR_DIR}/collections"
 #
 
 #
+# First, create the root of the artifacts tree
+#
+RUN mkdir -p "${FILE_DIR}" && \
+    chown -R "${APP_USER}:${APP_GROUP}" "${FILE_DIR}" && \
+    chmod -R u=rwX,g=rX,o= "${FILE_DIR}"
+
+USER "${APP_USER}"
+ENV HOME="${HOME_DIR}"
+
+#
 # Make sure the base tree is created properly. Non-existent
 # directories can lead to unexpected errors
 #
-RUN for n in \
+RUN umask 0027 && \
+    for n in \
         "${ARKCASE_DIR}" \
         "${ARKCASE_CONF_DIR}" \
         "${ARKCASE_WARS_DIR}" \
@@ -98,6 +122,5 @@ RUN for n in \
         "${SOLR_COLLECTIONS_DIR}" \
     ; do mkdir -p "${n}" ; done
 
-USER root
 WORKDIR "${FILE_DIR}"
 ENTRYPOINT [ "/entrypoint" ]
