@@ -70,7 +70,7 @@ COPY --chown=root:root --chmod=0755 scripts/* /usr/local/bin
 
 RUN groupadd --gid "${APP_GID}" "${APP_GROUP}" && \
     useradd  --uid "${APP_UID}" --gid "${APP_GROUP}" --groups "${ACM_GROUP}" --create-home --home-dir "${HOME_DIR}" "${APP_USER}" && \
-    chmod -R g-w,o-r "${HOME_DIR}"
+    chmod -R g-w,o-rwx "${HOME_DIR}"
 
 ENV RENDER_LOCK="${FILE_DIR}/.render-lock"
 ENV ARTIFACTS_MANIFEST="${FILE_DIR}/.artifacts.yaml"
