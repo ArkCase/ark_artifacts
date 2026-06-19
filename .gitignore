@@ -1,4 +1,5 @@
 **/.sw?
 **/.*.sw?
-test
-httpd/artifacts-httpd
+
+**/compliance*
+**/vulnerabilities*
