@@ -25,8 +25,8 @@ is_valid_port "${PORT}" || PORT="${DEFAULT_PORT}"
 [ $(id -u) -ne 0 ] && [ ${PORT} -lt 1024 ] && (( PORT += 10000 ))
 
 export HTTPD_PORT="${PORT}"
-export HTTPD_CERT="${SSL_DIR}/cert.pem"
-export HTTPD_PKEY="${SSL_DIR}/cert.key"
+export HTTPD_CERT="${SSL_CERTIFICATE}"
+export HTTPD_PKEY="${SSL_PRIVATE_KEY}"
 export HTTPD_ROOT="${FILE_DIR}"
 
 set_or_default HTTPD_EXE "/usr/local/bin/artifacts-httpd"
