@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import random
+import re
 import string
 import subprocess
 import sys
@@ -16,7 +17,7 @@ import urllib.parse
 import yaml
 from types import SimpleNamespace
 
-MIN_THREADS = 0
+MIN_THREADS = 1
 DEF_THREADS = 10
 MAX_THREADS = DEF_THREADS * 3
 
@@ -68,6 +69,11 @@ def fail(msg, code = 1):
 	log_err(msg)
 	os._exit(code)
 
+def env_flag(name):
+	# The same true-values as as_boolean from /.functions
+	value = os.environ.get(name, "").strip().lower()
+	return (value in ("true", "t", "yes", "y", "enable", "enabled", "on")) or bool(re.fullmatch("-?[1-9][0-9]*", value))
+
 def sanitize_path(path):
 	# This makes things simpler
 	parts = path.split("/")
@@ -83,6 +89,8 @@ parser.add_argument("--debug", metavar="debug", action="store_const", const=True
 parser.add_argument("--simulate", metavar="simulate", action="store_const", const=True, help=f"When set, will only output the details about the work that would be done, without doing it (if not given, it will be computed from the {ENV_ARTIFACTS_SIMULATE} environment variable)")
 
 args = parser.parse_args()
+args.debug = args.debug or env_flag(ENV_ARTIFACTS_DEBUG)
+args.simulate = args.simulate or env_flag(ENV_ARTIFACTS_SIMULATE)
 
 log_level = logging.INFO
 if args.debug:
@@ -139,10 +147,16 @@ if source_file == "-":
 total_threads = DEF_THREADS
 if args.threads:
 	total_threads = args.threads[0]
-	if total_threads < MIN_THREADS:
-		total_threads = MIN_THREADS
-	elif total_threads > MAX_THREADS:
-		total_threads = MAX_THREADS
+elif os.environ.get(ENV_ARTIFACTS_THREADS):
+	try:
+		total_threads = int(os.environ[ENV_ARTIFACTS_THREADS])
+	except ValueError:
+		fail(f"Invalid thread count in {ENV_ARTIFACTS_THREADS}: [{os.environ[ENV_ARTIFACTS_THREADS]}]")
+
+if total_threads < MIN_THREADS:
+	total_threads = MIN_THREADS
+elif total_threads > MAX_THREADS:
+	total_threads = MAX_THREADS
 
 # Load the configuration
 if source_file_is_file:
@@ -364,9 +378,12 @@ def encrypt_decrypt_value(key, value, encrypt = True):
 	mode = "-e"
 	if not encrypt:
 		mode = "-d"
-	# This mirrors what the mvn-get and prep-artifact use for crypto
-	cmd = [ "openssl", "aes-256-cbc", "-a", "-A", "-salt", "-iter", "5", mode, "-k", key ]
-	result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, input=value.encode())
+	# This mirrors what prep-artifact uses for crypto. The key goes through
+	# the environment since the command line is visible to every process
+	cmd = [ "openssl", "aes-256-cbc", "-a", "-A", "-salt", "-iter", "5", mode, "-pass", "env:ARTIFACTS_CRYPTO_KEY" ]
+	env = os.environ.copy()
+	env["ARTIFACTS_CRYPTO_KEY"] = key
+	result = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, input=value.encode())
 	if result.returncode != 0:
 		raise Exception(f"Cryptography failed (rc={result.returncode}): {result.stderr}")
 	return result.stdout.decode()
@@ -377,12 +394,25 @@ def encrypt_value(key, value):
 def decrypt_value(key, value):
 	return encrypt_decrypt_value(key, value, False)
 
+def encrypt_value_for_mvn_get(key_var, key, value):
+	# mvn-get decrypts via the decrypt script (aes-crypt), which can't read the OpenSSL format
+	env = os.environ.copy()
+	env[key_var] = key
+	result = subprocess.run([ "encrypt", key_var ], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, input=value.encode())
+	if result.returncode != 0:
+		raise Exception(f"Cryptography failed (rc={result.returncode}): {result.stderr}")
+	return result.stdout.decode()
+
 def add_creds_environment(environment, credentials, prefix):
 	key_var = ENV_ENCRYPTION_KEY % prefix
 	encryption_key = get_encryption_key(key_var)
 	environment[key_var] = encryption_key
-	environment[ENV_USERNAME % prefix] = encrypt_value(encryption_key, credentials[KEY_USERNAME])
-	environment[ENV_PASSWORD % prefix] = encrypt_value(encryption_key, credentials[KEY_PASSWORD])
+	if prefix == ENV_PREFIX_MAVEN:
+		encrypt = lambda value: encrypt_value_for_mvn_get(key_var, encryption_key, value)
+	else:
+		encrypt = lambda value: encrypt_value(encryption_key, value)
+	environment[ENV_USERNAME % prefix] = encrypt(credentials[KEY_USERNAME])
+	environment[ENV_PASSWORD % prefix] = encrypt(credentials[KEY_PASSWORD])
 	return environment
 
 def resolve_target(target):
@@ -480,7 +510,9 @@ def compute_command_spec(source, target):
 	return command_generator({}, source, target)
 
 def simulate_process(spec, log):
-	logging.info(f"Running this command:\n\n{spec.command}\n\nWith these environment additions:\n\n{yaml.safe_dump(spec.environment)}")
+	# The encryption key would make the encrypted credentials readable to anyone with the logs
+	environment = { k: ("(hidden)" if k.endswith("_ENCRYPTION_KEY") else v) for k, v in spec.environment.items() }
+	logging.info(f"Running this command:\n\n{spec.command}\n\nWith these environment additions:\n\n{yaml.safe_dump(environment)}")
 	return SimpleNamespace(returncode=0)
 
 def run_process(spec, log):
@@ -511,7 +543,7 @@ def run_download(spec):
 			log_ok(f"The artifact {spec.path} was retrieved successfully!")
 			return True
 
-		with open(log_path, "r") as log:
+		with open(log_path, "r", errors="replace") as log:
 			log_err(f"The retrieval for the artifact {spec.path} failed (rc={result.returncode}):\n{log.read()}")
 			return False
 	except Exception as e:
@@ -608,6 +640,10 @@ def download_all_artifacts(executor):
 				log_warn(f"A category for the product [{product_path}] was detected with an empty name - this is not allowed!")
 				continue
 
+			# This is the product's flag, not a category
+			if category_name == KEY_ENABLED:
+				continue
+
 			path = f"{product_path}/{category_name}"
 
 			category = product[category_name]
@@ -628,6 +664,10 @@ def download_all_artifacts(executor):
 					log_warn(f"An artifact for the category [{category_path}] was detected with an empty name - this is not allowed!")
 					continue
 
+				# This is the category's flag, not an artifact
+				if artifact_name == KEY_ENABLED:
+					continue
+
 				path = f"{category_path}/{artifact_name}"
 
 				artifact = category[artifact_name]
@@ -644,6 +684,7 @@ def download_all_artifacts(executor):
 
 				# Apply any envvars in the file name
 				artifact_name = os.path.expandvars(artifact_name)
+				path = f"{category_path}/{artifact_name}"
 				try:
 					jobs[path] = SimpleNamespace(path = path, product = product_name, category = category_name, artifact = artifact_name, source = parse_artifact(path, artifact))
 				except Exception as e:

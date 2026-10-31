@@ -8,7 +8,7 @@ ${DEBUG} && set -x
 # If we're not explicitly given the name of the file to use as our
 # auth table, we use the file in the current directory
 set_or_default CURL_AUTH_FILE "curl.auth"
-export CURL_AUTH_FULE
+export CURL_AUTH_FILE
 
 usage()
 {
@@ -56,7 +56,8 @@ curl_pull()
 
 	# First things first: can we get at it straight up?
 	local RC=0
-	local HTTP_CODE="$(curl -kLsS --disallow-username-in-url --head "${URL}" -w "%{http_code}" -o /dev/null)" || RC=${?}
+	local HTTP_CODE=""
+	HTTP_CODE="$(curl -kLsS --disallow-username-in-url --head "${URL}" -w "%{http_code}" -o /dev/null)" || RC=${?}
 	[ ${RC} -eq 0 ] || fail "Failed to query the accessibility for URL [${URL}]"
 
 	# If the HTTP code is above 401, we can't do anything about it...
@@ -102,7 +103,7 @@ curl_pull()
 		#
 		local MATCHED="false"
 		if [ -f "${CURL_AUTH_FILE}" ] ; then
-			while read REGEX USERNAME PASSWORD ; do
+			while read -r REGEX USERNAME PASSWORD ; do
 				[ -n "${REGEX}" ] || continue
 				[ -n "${USERNAME}" ] || continue
 				[ -n "${PASSWORD}" ] || continue
@@ -122,7 +123,7 @@ curl_pull()
 
 		# If there are no matches, then the table is either empty, or
 		# non-existent. In this case, the environment variables
-		# CURL_USER and CURL_PASSWORD will be used as the credentials,
+		# CURL_USERNAME and CURL_PASSWORD will be used as the credentials,
 		# if they're set and non-empty. Decryption will be attempted,
 		# and if it fails then the verbatim values will be used.
 		if [ -z "${AUTH}" ] && [ -v CURL_USERNAME ] && [ -n "${CURL_USERNAME:-""}" ] ; then
@@ -131,7 +132,7 @@ curl_pull()
 			AUTH="${USERNAME}:${PASSWORD}"
 		fi
 	fi
-	[ -z "${AUTH}" ] || AUTH="--user \"${AUTH}\""
+	[ -z "${AUTH}" ] || AUTH="$(auth_params "${AUTH}")"
 	curl -kLsS --disallow-username-in-url --fail --config <(echo "${AUTH}") "${URL}"
 }
 
@@ -139,9 +140,8 @@ pull()
 {
 	local URL="${1}"
 	if [[ "${URL,,}" =~ ^[-a-zA-Z0-9_.]+(:[-a-zA-Z0-9_.]+){2,4}$ ]] ; then
-		# This is a Maven pull, so use mvn-get
 		# TODO: How to output the artifact to stdout? Better off just using mvn-get...
-		:
+		fail "The source [${URL}] is a Maven artifact, use mvn-get to retrieve it"
 	elif [[ "${URL,,}" =~ ^[a-z][-+.a-z0-9]*:// ]] ; then
 		# It's a URL, so pull it with CURL
 		curl_pull "${URL}"
@@ -191,10 +191,12 @@ DIR="$(dirname "${TGT}")"
 [ -d "${DIR}" ] || mkdir -p "${DIR}"
 
 say "Starting deployment of [${SRC}] as [${TGT}]..."
-pull "${SRC}" | save_target "${TGT}" "${VER}" | render_sum "${SUM}"
-RC=("${PIPESTATUS[@]}")
+# The || keeps "set -e" from exiting before we can report which stage failed
+RC=( 0 0 0 )
+pull "${SRC}" | save_target "${TGT}" "${VER}" | render_sum "${SUM}" || RC=("${PIPESTATUS[@]}")
 
-[ ${RC[0]} -eq 0 ] || fail "\tFailed to retrieve the source file from [${SRC}]:\n$(cat "${TGT}")"
+# The target holds any error message from the pull, or a partial download
+[ ${RC[0]} -eq 0 ] || fail "\tFailed to retrieve the source file from [${SRC}]:\n$(head -c 4096 "${TGT}")"
 [ ${RC[1]} -eq 0 ] || fail "\tFailed to store the retrieved file into [${TGT}]"
 [ ${RC[2]} -eq 0 ] || fail "\tFailed to compute the retrieved file's checksum into [${SUM}]"
 

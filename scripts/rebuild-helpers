@@ -21,11 +21,11 @@ set_or_default RENDER_LOCK "/.render-lock"
 		say "\t👉 Processing [${FILE}]..."
 		VER=""
 		[ -s "${FILE}.ver" ] && VER="$(<"${FILE}.ver")"
-		if render-helpers "${FILE}" "${VER}" ; then
+		if render-helpers "${FILE}" "${VER}" |& sed -e 's;^;\t\t;g' ; then
 			(( ++COUNT ))
 		else
 			FAILED+=("${FILE}")
-		fi |& sed -e 's;^;\t\t;g'
+		fi
 	done < <(find "${FILE_DIR}" -mindepth 2 -type f -not -name '*.sum' -not -name '*.ver' | sort)
 
 	if [ ${#FAILED[@]} -gt 0 ] ; then
