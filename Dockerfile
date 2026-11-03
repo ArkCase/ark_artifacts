@@ -85,8 +85,7 @@ ENV HOME="${HOME_DIR}"
 #
 RUN --mount=type=bind,target=/src \
     --mount=type=bind,from=httpd,target=/httpd \
-    install -o root -g root -m 0755 /httpd/artifacts-httpd /usr/local/bin && \
-    install -o root -g root -m 0755 /src/entrypoint / && \
+    install -o root -g root -m 0755 -t /usr/local/bin /httpd/artifacts-httpd /src/entrypoint && \
     ( tar --owner=root --group=root --mode=u=rwX,go=rX -cf - /src/scripts ) | tar --strip-components=2 -C /usr/local/bin -xvf - && \
     groupadd --gid "${APP_GID}" "${APP_GROUP}" && \
     useradd  --uid "${APP_UID}" --gid "${APP_GROUP}" --groups "${ACM_GROUP}" --create-home --home-dir "${HOME_DIR}" "${APP_USER}" && \
@@ -112,4 +111,3 @@ RUN --mount=type=bind,target=/src \
 
 USER "${APP_USER}"
 WORKDIR "${FILE_DIR}"
-ENTRYPOINT [ "/entrypoint" ]
