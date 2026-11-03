@@ -61,17 +61,6 @@ ENV FILE_DIR="${BASE_DIR}/file"
 ENV INIT_DIR="${BASE_DIR}/init"
 ENV DEPL_DIR="${BASE_DIR}/depl"
 
-#
-# Add the script that allows us to add files
-#
-COPY --chown=root:root --chmod=0755 --from=httpd /artifacts-httpd /usr/local/bin
-COPY --chown=root:root --chmod=0755 entrypoint /
-COPY --chown=root:root --chmod=0755 scripts/* /usr/local/bin
-
-RUN groupadd --gid "${APP_GID}" "${APP_GROUP}" && \
-    useradd  --uid "${APP_UID}" --gid "${APP_GROUP}" --groups "${ACM_GROUP}" --create-home --home-dir "${HOME_DIR}" "${APP_USER}" && \
-    chmod -R g-w,o-rwx "${HOME_DIR}"
-
 ENV RENDER_LOCK="${FILE_DIR}/.render-lock"
 ENV ARTIFACTS_MANIFEST="${FILE_DIR}/.artifacts.yaml"
 
@@ -89,26 +78,23 @@ ENV SOLR_DIR="${FILE_DIR}/solr"
 ENV SOLR_CONFIG_DIR="${SOLR_DIR}/configs"
 ENV SOLR_COLLECTIONS_DIR="${SOLR_DIR}/collections"
 
-#
-# TODO: More artifacts for deployment here ... maybe even for
-# Alfresco initialization and the like
-#
-
-#
-# First, create the root of the artifacts tree
-#
-RUN mkdir -p "${FILE_DIR}" && \
-    chown -R "${APP_USER}:${APP_GROUP}" "${FILE_DIR}" && \
-    chmod -R u=rwX,g=rX,o= "${FILE_DIR}"
-
-USER "${APP_USER}"
 ENV HOME="${HOME_DIR}"
 
 #
-# Make sure the base tree is created properly. Non-existent
-# directories can lead to unexpected errors
+# Add the script that allows us to add files
 #
-RUN umask 0027 && \
+RUN --mount=type=bind,target=/src \
+    --mount=type=bind,from=httpd,target=/httpd \
+    install -o root -g root -m 0755 /httpd/artifacts-httpd /usr/local/bin && \
+    install -o root -g root -m 0755 /src/entrypoint / && \
+    ( tar --owner=root --group=root --mode=u=rwX,go=rX -cf - /src/scripts ) | tar --strip-components=2 -C /usr/local/bin -xvf - && \
+    groupadd --gid "${APP_GID}" "${APP_GROUP}" && \
+    useradd  --uid "${APP_UID}" --gid "${APP_GROUP}" --groups "${ACM_GROUP}" --create-home --home-dir "${HOME_DIR}" "${APP_USER}" && \
+    chmod -R g-w,o-rwx "${HOME_DIR}" && \
+    mkdir -p "${FILE_DIR}" && \
+    chown -R "${APP_USER}:${APP_GROUP}" "${FILE_DIR}" && \
+    chmod -R u=rwX,g=rX,o= "${FILE_DIR}" && \
+    umask 0027 && \
     for n in \
         "${ARKCASE_DIR}" \
         "${ARKCASE_CONF_DIR}" \
@@ -121,7 +107,9 @@ RUN umask 0027 && \
         "${SOLR_DIR}" \
         "${SOLR_CONFIG_DIR}" \
         "${SOLR_COLLECTIONS_DIR}" \
-    ; do mkdir -p "${n}" ; done
+    ; do mkdir -p "${n}" || exit 1 ; done ; \
+    chown -R "${APP_USER}:${APP_GROUP}" "${FILE_DIR}"/*
 
+USER "${APP_USER}"
 WORKDIR "${FILE_DIR}"
 ENTRYPOINT [ "/entrypoint" ]
