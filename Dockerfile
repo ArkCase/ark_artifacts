@@ -107,7 +107,9 @@ RUN --mount=type=bind,target=/src \
         "${SOLR_CONFIG_DIR}" \
         "${SOLR_COLLECTIONS_DIR}" \
     ; do mkdir -p "${n}" || exit 1 ; done ; \
-    chown -R "${APP_USER}:${APP_GROUP}" "${FILE_DIR}"/*
+    chown -R "${APP_USER}:${APP_GROUP}" "${FILE_DIR}"/* && \
+    chown -R "${APP_USER}:${APP_GROUP}" "${TEMP_DIR}" && \
+    chmod -R u=rwX,g=rX,o= "${TEMP_DIR}"
 
 USER "${APP_USER}"
 WORKDIR "${FILE_DIR}"
